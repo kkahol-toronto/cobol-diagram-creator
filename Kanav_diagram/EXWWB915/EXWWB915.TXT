@@ -1,0 +1,1390 @@
+000100 IDENTIFICATION DIVISION.                                         00010000
+000200 PROGRAM-ID.     EXWWB915.                                        00020000
+000300 AUTHOR.         DAWN MAHN.                                       00030000
+000400 DATE-WRITTEN.   OCTOBER 2012.                                    00040000
+000500 DATE-COMPILED.                                                   00050000
+000600******************************************************************00060000
+000700*                                                                *00070000
+000800*  PROGRAM DESCRIPTION: THIS PROGRAM READS IN THE INVDATA BANK   *00080000
+000900*  FILE FROM INVOICING, EXTRACTS REBILL RECORDS AND INSERTS THE  *00090000
+001000*  DATA INTO THE GEVIS DATABASE.                                 *00100000
+001300*                                                                *00130000
+001700*  INPUT FILE  : FDIP.INV.INVDATAX.GEVIS(0)                      *00170000
+001800*  TABLES      : MEXW046_NAV_INV_VIN                             *00180006
+001900*                MEXW047_NAO_INV_OPT                             *00190006
+002000******************************************************************00200000
+002100*                       REVISION LOG                             *00210001
+002200*                                                                *00220001
+002300* DATE    : 10/00/2012  PROGRAMMER: DAWN MAHN                    *00230001
+002400* ETRACKER: 11300010                                             *00240001
+002500* REASON  : ORIGINAL PROGRAM CREATION.                           *00250001
+002510*                                                                *00251001
+002600*                                                                *00260000
+002700* DATE    : 05/07/2020  PROGRAMMER: CANDACE BOERNER              *00230001
+002800* RALLY   : F259434/US1597336                                    *2400  01
+002900* REASON  : VI&D FILE LAYOUT CHANGE.  MODIFIED COPYBOOK CPEWIIDR.*2500  01
+002910* REASON  : CHANGE IDR-RAPID-SPEC-GRP OCCURS FROM 35 TO 31.      *2500  01
+003000*           ADD FILLER (44 SPACES) AFTER FIELD IDR-RAPID-MSRP    *      01
+003010*                                                                *2510  01
+003100******************************************************************00260000
+004400                                                                  00440000
+004500 ENVIRONMENT DIVISION.                                            00450000
+004600 INPUT-OUTPUT SECTION.                                            00460000
+004700 FILE-CONTROL.                                                    00470000
+004800                                                                  00480000
+004900     SELECT AUDIT-FILE           ASSIGN TO AUDIT.                 00490000
+004901     SELECT INVEHLN-FILE         ASSIGN TO INVEHLN.               00490100
+004902     SELECT INCNTRY-FILE         ASSIGN TO INCNTRY.               00490200
+005000                                                                  00500000
+005100 DATA DIVISION.                                                   00510000
+005200 FILE SECTION.                                                    00520000
+005300                                                                  00530000
+005400 FD  AUDIT-FILE.                                                  00540000
+005500 01  AUDIT-RECORD.                                                00550000
+005600     05  AUDIT-LABEL             PIC X(30).                       00560000
+005700     05  AUDIT-DATA              PIC X(50).                       00570000
+005710                                                                  00571001
+005720 FD  INVEHLN-FILE.                                                00572001
+005730 01  INVEHLN-REC                 PIC X(80).                       00573001
+005740                                                                  00574001
+005750 FD  INCNTRY-FILE.                                                00575001
+005760 01  INCNTRY-REC                 PIC X(80).                       00576001
+005800                                                                  00580000
+005900/*****************************************************************00590000
+006000*                 W O R K I N G   S T O R A G E                  *00600000
+006100******************************************************************00610000
+006200 WORKING-STORAGE SECTION.                                         00620000
+006300 77  PAN-VALET PICTURE X(24) VALUE "002PEXWWB915 10/30/12".       00630001
+006700                                                                  00670000
+006800                                                                  00680000
+006900 COPY CPESDB2.                                                    00690000
+006910*- SQLCA AND SQLCODES                                             00690100
+007000                                                                  00700000
+007100                                                                  00710000
+007200 COPY CPESIMSB.                                                   00720000
+007210*- IMS FUNCTIONS AND STATUS CODES                                 00720100
+007300                                                                  00730000
+007400                                                                  00740000
+007500 COPY CPESGNTB.                                                   00750000
+007510*- GENERIC TABLE LAYOUTS - SYSTEM                                 00750100
+007600                                                                  00760000
+007700                                                                  00770000
+007800 COPY CPEWGNTB.                                                   00780000
+007810*- GENERIC TABLE LAYOUTS - GEVIS                                  00780100
+007900                                                                  00790000
+008000                                                                  00800000
+008100 COPY CPESEBWS.                                                   00810000
+008110*- BMPSHELL WORKING STORAGE                                       00810100
+008200                                                                  00820000
+008300                                                                  00830000
+008400*COPY CPESSDTE.                                                   00840000
+008410*- SUBROUTINE WS - EXSESDTE                                       00840100
+008500                                                                  00850000
+008600                                                                  00860000
+008700*COPY CPESSMSG.                                                   00870000
+008701*- SUBROUTINE WS - EXSESMSG                                       00870100
+008702                                                                  00870110
+008703                                                                  00870120
+008704 COPY CPESD016.                                                   00870200
+008705*- DCLGEN - MEXS016_GENERIC2                                      00870300
+008800                                                                  00880000
+008900                                                                  00890000
+009000 COPY CPEWD046.                                                   00900015
+009001*- DCLGEN - MEXW046_NAV_INV_VIN                                   00900016
+009010                                                                  00901015
+009020                                                                  00902015
+009030 COPY CPEWD047.                                                   00903015
+009040*- DCLGEN - MEXW047_NAO_INV_OPT                                   00903016
+009500                                                                  00950000
+009800                                                                  00980000
+009801/*****************************************************************00980103
+009802* RECORD DESCRIPTIONS FOR GSAM FILES                             *00980203
+009803******************************************************************00980303
+009804* INPUT INTERFACE TRANSACTIONS                                    00980403
+009805 COPY CPEWIIDR.                                                   00980503
+009808                                                                  00980803
+009809 01  CHKP-SAVE-AREA.                                              00980906
+009810     05  CHKP-SAVE                     PIC  X(1000).              00980907
+009811/*****************************************************************00981003
+009812* INTERNAL TABLES FOR VEHICLE LINE AND COUNTRY                   *00981103
+009813******************************************************************00981203
+009814 01  WS-INCLUDED-VEHICLE-LINES.                                   00981314
+009815     05  V-VL-TBL-ID                   PIC X(08) VALUE "VEH LINE".00981315
+009816     05  INCL-VEH-LN-TBLE              OCCURS 20.                 00981403
+009817         10  INCL-VEH-LN-DATA          PIC X(02)  VALUE SPACES.   00981503
+009818     05  WS-INVEHLN-ROW-MAX            PIC S9(4)  COMP VALUE +20. 00981603
+009819     05  INVEHLN-X                     PIC S9(4)  COMP.           00981703
+009820                                                                  00981803
+009821 01  WS-INVOICE-VL.                                               00981903
+009822     05  INV-VL-CD                     PIC X(02).                 00982003
+009823     05  FILLER                        PIC X(78)  VALUE SPACES.   00982103
+009824                                                                  00982403
+009825 01  WS-INCLUDED-COUNTRY.                                         00982514
+009826     05  V-CNTRY-TBL-ID                PIC X(08) VALUE "COUNTRY ".00982515
+009827     05  INCL-CNTRY-TBLE               OCCURS 20.                 00982603
+009828         10  INCL-DLR-CNTRY-CD         PIC X(01)  VALUE SPACES.   00982716
+009829         10  INCL-CNTRY-CD             PIC X(03)  VALUE SPACES.   00982803
+009830     05  WS-INCNTRY-ROW-MAX            PIC S9(4)  COMP VALUE +20. 00982904
+009831     05  INCNTRY-X                     PIC S9(4)  COMP.           00983004
+009832                                                                  00983103
+009833 01  WS-SOLD-TO-DLR-CTRY.                                         00983203
+009834     05  SLD-TO-DLR-CTRY-CD            PIC X(01).                 00983303
+009835     05  FILLER                        PIC X(01)  VALUE SPACES.   00983403
+009836     05  SLD-TO-DLR-ISO-CTRY-CD        PIC X(03).                 00983503
+009837     05  FILLER                        PIC X(01)  VALUE SPACES.   00983603
+009838                                                                  00983703
+023800 01  ERROR-RECORD.                                                00983704
+023840     05  ERROR-VIN                     PIC X(17) VALUE SPACES.    00983708
+023841     05  FILLER                        PIC X(01) VALUE SPACES.    00983709
+023850     05  ERROR-MESSAGE.                                           00983710
+023860         10  ERROR-MESSAGE-1           PIC X(50) VALUE SPACES.    00983711
+023870         10  ERROR-MESSAGE-2           PIC X(38) VALUE SPACES.    00983712
+023880     05  ERROR-VALUE                   PIC X(34) VALUE SPACES.    00983713
+023890     05  ERROR-HEADER-DATA             REDEFINES ERROR-VALUE.     00983714
+023900         10  ERROR-FILE-TYPE           PIC X(01).                 00983715
+023910         10  ERROR-DATA-SRC            PIC X(02).                 00983716
+023920         10  ERROR-BATCH-DT            PIC X(10).                 00983717
+023930         10  FILLER                    PIC X(21).                 00983718
+023940     05  ERROR-SORT-FIELDS.                                       00983719
+023950         10  ERROR-PROD-SYS           PIC X(02) VALUE SPACES.     00983720
+023960         10  ERROR-BATCH-NBR          PIC 9(05) VALUE ZEROES.     00983721
+023970         10  ERROR-SORT-BYTE          PIC X(01) VALUE SPACES.     00983722
+023980     05  ERROR-PROD-SRC               PIC X(02) VALUE SPACES.     00983723
+023990     05  ERROR-FILLER                 PIC X(35) VALUE SPACES.     00983724
+023991                                                                  00983730
+023992/*****************************************************************00984003
+023993* PROGRAM LITERALS                                               *00985003
+023994******************************************************************00986003
+023995 01  PROGRAM-LITERALS.                                            00990000
+023996     05  PL-PGM-NAME             PIC X(08) VALUE "EXWWB915".      00991003
+023997     05  PL-SYSTEM-CD            PIC X(04) VALUE "EXWW".          01000003
+023998     05  PL-TABLE-ID             PIC X(07) VALUE "MODELYR".       01010003
+023999     05  PL-BATCHCTL             PIC X(08) VALUE "INVDATA ".      01030020
+024000     05  PL-F                    PIC X(01) VALUE "F".             01040114
+024001     05  PL-C                    PIC X(01) VALUE "C".             01040214
+024002     05  PL-Y                    PIC X(01) VALUE "Y".             01040215
+024003     05  PL-FOUR-ZEROS           PIC X(04) VALUE "0000".          01040217
+024004     05  PL-0410P                PIC X(05) VALUE "0410P".         01040218
+024005     05  PL-OPT                  PIC X(03) VALUE "OPT".           01041011
+024006     05  PL-EXTERIOR             PIC X(10) VALUE ". EXTERIOR".    01041012
+024007     05  PL-EXTERIOR-2           PIC X(08) VALUE "EXTERIOR".      01041013
+024008     05  PL-INTERIOR             PIC X(10) VALUE ". INTERIOR".    01042011
+024009     05  PL-INTERIOR-2           PIC X(08) VALUE "INTERIOR".      01042012
+024010     05  PL-FUNCTIONAL           PIC X(12) VALUE ". FUNCTIONAL".  01043011
+024011     05  PL-FUNCTIONAL-2         PIC X(10) VALUE "FUNCTIONAL".    01043012
+024012     05  PL-SAFETY               PIC X(17) VALUE                  01044011
+024013                                           ". SAFETY/SECURITY".   01044111
+024014     05  PL-SAFETY-2             PIC X(15) VALUE                  01044112
+024015                                           "SAFETY/SECURITY".     01044113
+024016     05  PL-WARRANTY             PIC X(10) VALUE ". WARRANTY".    01045011
+024017     05  PL-RAPID-SPEC-HEADER    PIC X(17) VALUE                  01045012
+024018                                           "RAPID SPEC HEADER".   01045013
+024019     05  PL-CHAR-ALPHABETIC-UPPER    PIC X(26)                    01046012
+024020         VALUE "ABCDEFGHIJKLMNOPQRSTUVWXYZ".                      01047012
+024021     05  PL-CHAR-ALPHABETIC-LOWER    PIC X(26)                    01048012
+024022         VALUE "abcdefghijklmnopqrstuvwxyz".                      01049012
+024023                                                                  01050010
+024024/*****************************************************************01050110
+024025* PROGRAM MESSAGES                                               *01050210
+024026******************************************************************01050310
+024027 01  PROGRAM-MESSAGES.                                            01051010
+024028     05  MSG-HEADER-BAD                           PIC X(50) VALUE 01060010
+024029         "HEADER FOUND WHEN TRAILER EXPECTED                ".    01070010
+024030     05  MSG-HEADER-NONE                          PIC X(50) VALUE 01080010
+024031         "FIRST RECORD IS NOT HEADER                        ".    01090010
+024032     05  MSG-TRAILER-BAD                          PIC X(50) VALUE 01100010
+024033         "TRAILER DATA DOES NOT MATCH HEADER DATA           ".    01110010
+024034     05  MSG-TRAILER-MISSING                      PIC X(50) VALUE 01110020
+024035         "TRAILER RECORD IS MISSING                         ".    01110030
+024036     05  MSG-TRAILER-NONE                         PIC X(50) VALUE 01120010
+024037         "LAST RECORD IS NOT TRAILER                        ".    01130010
+024038     05  MSG-HDR-PROD-SYS-2                       PIC X(50) VALUE 01140010
+024039         "HEADER PROD SYSTEM IS NOT IN SYSPARM TABLE        ".    01150010
+024040     05  MSG-HDR-BATCH-DT-1                       PIC X(50) VALUE 01160010
+024041         "HEADER BATCH DATE IS NOT VALID                    ".    01170010
+024042     05  MSG-HDR-BATCH-NBR-1                      PIC X(50) VALUE 01190010
+024043         "HEADER BATCH NUMBER IS NOT NUMERIC                ".    01200010
+024044     05  MSG-HDR-BATCH-NBR-2                      PIC X(50) VALUE 01210010
+024045         "HEADER BATCH NUMBER DOES NOT MATCH SYSPARM        ".    01220010
+024046     05  MSG-TRL-NBR-RECS                         PIC X(50) VALUE 01230010
+024047         "TRAILER RECORD COUNT DOESN'T MATCH BATCH COUNT    ".    01240010
+024048     05  MSG-TRL-NBR-RECS-2                       PIC X(50) VALUE 01240011
+024049         "TRAILER RECORD COUNT DOESN'T MATCH ADD/UPD COUNT  ".    01240012
+024050     05  MSG-TBL-CNT                              PIC X(50) VALUE 01240020
+024051         "TABLE COUNT > MAX ALLOWED                         ".    01240030
+024052     05  MSG-VIN-SPACES-OR-HIGH-VALUES            PIC X(50) VALUE 01240040
+024053         "VIN IS SPACES OR HIGH VALUES                      ".    01240050
+024054     05  MSG-VIN-CONTAINS-SPACES                  PIC X(50) VALUE 01240060
+024055         "VIN CONTAINS SPACES                               ".    01240070
+024056     05  MSG-VIN-CONTAINS-SPEC-CHARS              PIC X(50) VALUE 01240080
+024057         "VIN CONTAINS SPECIAL CHARACTERS                   ".    01240090
+024058     05  MSG-MKT-MDL-YR-NOT-FOUND                 PIC X(50) VALUE 01240100
+024059         "MARKET MODEL YEAR NOT FOUND ON MEXS016            ".    01240200
+024060     05  MSG-MEXS016-SYSPARM                      PIC X(50) VALUE 01240300
+024061         "MISSING MEXS016 SYSPARM REC                       ".    01240400
+024062     05  MSG-INPUT-FILE-IS-EMPTY                  PIC X(50) VALUE 01240500
+024063         "INPUT FILE IS EMPTY                               ".    01240600
+024064     05  MSG-VEH-LINE-NOT-FOUND                   PIC X(50) VALUE 01240700
+024065         "VEHICLE LINE NOT FOUND                            ".    01240800
+024066     05  MSG-COUNTRY-NOT-FOUND                    PIC X(50) VALUE 01240900
+024067         "COUNTRY CODE NOT FOUND                            ".    01241000
+024068     05  MSG-DIV-NOT-FOUND                        PIC X(50) VALUE 01241100
+024069         "DIVISION NOT FOUND                                ".    01241200
+024070                                                                  01270000
+024071/*****************************************************************01271003
+024072* PROGRAM SWITCHES                                               *01272003
+024073******************************************************************01273003
+024074 01  PROGRAM-SWITCHES.                                            01280000
+024075     05  PS-INPUT-EOF-SW             PIC X(01).                   01290011
+024076         88 INPUT-EOF                VALUE "Y".                   01300011
+024077     05  PS-HEADER-TRAILER           PIC X(01).                   01340010
+024078         88 HEADER-NEEDED            VALUE "H".                   01350010
+024079         88 TRAILER-NEEDED           VALUE "T".                   01360010
+024080     05  PS-VEHLN-SW                 PIC X(01).                   01360110
+024081         88 VEHLN-FOUND              VALUE "Y".                   01360209
+024082     05  PS-ERROR-SW                 PIC X(01).                   01360310
+024083         88 ERROR-FOUND              VALUE "Y".                   01360320
+024084         88 ERROR-NOT-FOUND          VALUE "N".                   01360330
+024085     05  PS-SEND-EMAIL               PIC X(01).                   01360340
+024086         88 SEND-EMAIL               VALUE "Y".                   01360350
+024087         88 NOT-SEND-EMAIL           VALUE "N".                   01360360
+024088     05  PS-INVEHLN-EOF-SW           PIC X(01).                   01361010
+024089         88 INVEHLN-EOF              VALUE "Y".                   01362010
+024090     05  PS-INCNTRY-EOF-SW           PIC X(01).                   01363010
+024091         88 INCNTRY-EOF              VALUE "Y".                   01364010
+024092                                                                  01370000
+024093/*****************************************************************01371003
+024094* PROGRAM VARIABLES                                              *01372003
+024095******************************************************************01373003
+024096 01  PROGRAM-VARIABLES.                                           01380000
+024097     05  PV-INPUT-REC-CNT              PIC S9(6) COMP VALUE +0.   01390011
+024098     05  PV-INS-UPD-REC-CNT            PIC S9(6) COMP VALUE +0.   01390012
+024099     05  PV-BYPASS-REC-CNT             PIC S9(6) COMP VALUE +0.   01390013
+024100     05  PV-CURR-DATE.                                            01410001
+024101         10  PV-CURR-DT-CC             PIC X(02).                 01420001
+024102         10  PV-CURR-DT-YY             PIC X(02).                 01430001
+024103         10  FILLER                    PIC X(01) VALUE "-".       01440001
+024104         10  PV-CURR-DT-MM             PIC X(02).                 01450001
+024105         10  FILLER                    PIC X(01) VALUE "-".       01460001
+024106         10  PV-CURR-DT-DD             PIC X(02).                 01470001
+024107     05  PV-COMP-DATE.                                            01480001
+024108         10  PV-COMP-DT-CC             PIC X(02).                 01490001
+024109         10  PV-COMP-DT-YY             PIC X(02).                 01500001
+024110         10  FILLER                    PIC X(01) VALUE "-".       01510001
+024111         10  PV-COMP-DT-MM             PIC X(02) VALUE "01".      01520001
+024112         10  FILLER                    PIC X(01) VALUE "-".       01530001
+024113         10  PV-COMP-DT-DD             PIC X(02) VALUE "01".      01540001
+024114     05  PV-INVDATA-CNTL-CUR-BATCH     PIC X(05) VALUE SPACES.    01560001
+024115     05  PV-INVDATA-CNTL-CUR-BATCH-NUM REDEFINES                  01570001
+024116            PV-INVDATA-CNTL-CUR-BATCH  PIC 9(05).                 01580001
+024117     05  PV-HDR-BATCH-NBR              PIC 9(05).                 01580002
+024118     05  PV-BATCH-NBR                  PIC 9(05).                 01590012
+024119     05  PV-BATCH-DT                   PIC X(10).                 01590013
+024120     05  PV-COUNT-BATCH                PIC S9(9) COMP.            01600012
+024121     05  PV-ERROR-BATCH                PIC 9(05).                 01600013
+024122     05  PV-ATTRIBUTE-DATA             PIC 9(05).                 01610012
+024123     05  PV-VIN-SPACE-COUNT            PIC S9(04) USAGE COMP.     01610112
+024124     05  PV-VIN-SP-CHAR-COUNT          PIC S9(04) USAGE COMP.     01610113
+024125     05  PV-VIN-SUB                    PIC 9(02)  USAGE COMP.     01610212
+024126     05  PV-17-CHAR-VIN                PIC X(17)  VALUE SPACES.   01610312
+024127     05  PV-VIN-CHAR-POSITION REDEFINES PV-17-CHAR-VIN            01610412
+024128         OCCURS 17 TIMES               PIC X(01).                 01610512
+024129     05  PV-EXWWB915-SYSPARM-BATCHCTL.                            01660001
+024130         10  PV-EXWWB915-CURR-BATCH-NO PIC 9(05).                 01670001
+024140     05  PV-MODEL-YEAR.                                           01670002
+024141         10  PV-MDL-YR                 PIC X(50)  VALUE SPACES.   01670003
+024142     05  PV-INT-MODEL-YEAR    REDEFINES PV-MODEL-YEAR.            01670005
+024143         10  PV-INT-MDL-YR             PIC 9(04).                 01670006
+024144         10  FILLER                    PIC X(46).                 01670007
+024145                                                                  01670008
+024146                                                                  01680000
+024147 01  INVDATA.                                                     01690001
+024148     05  INVDATA-RECORD                PIC X(10000) VALUE SPACES. 01700001
+024149     05  INVDATA-HEADER-INV REDEFINES INVDATA-RECORD.             01890001
+024150         10  FILLER                     PIC X(17).                01900001
+024151         10  INVDATA-HD-HEADER-INV      PIC X(03).                01910001
+024152             88  INV-HEADER-RECORD      VALUE "HDR".              01920001
+024153         10  INVDATA-HDR-ID             PIC X(08).                01930001
+024154         10  INVDATA-HDR-CURR-BATCH     PIC 9(05).                01940001
+024155         10  INVDATA-HDR-PREV-BATCH     PIC 9(05).                01950001
+024156         10  INVDATA-HDR-CURR-DATE      PIC X(06).                01960001
+024157         10  INVDATA-HDR-PREV-DATE      PIC X(06).                01970001
+024158         10  FILLER                     PIC X(9950).              01980001
+024159     05  INVDATA-TRAILER-INV REDEFINES INVDATA-RECORD.            01990001
+024160         10  FILLER                     PIC X(17).                02000001
+024161         10  INVDATA-TL-TRAILER-INV     PIC X(03).                02010001
+024162             88  INV-TRAILER-RECORD     VALUE "TRL".              02020001
+024163         10  INVDATA-TLR-ID             PIC X(08).                02030001
+024164         10  INVDATA-TLR-CURR-BATCH     PIC 9(05).                02040001
+024165         10  FILLER                     PIC X(05).                02050001
+024166         10  INVDATA-TLR-CNT            PIC 9(08).                02060001
+024167         10  FILLER                     PIC X(9954).              02070001
+024168                                                                  02080001
+024169/*****************************************************************02150000
+024170*                 L I N K A G E   S E C T I O N                  *02160000
+024171******************************************************************02170000
+024172 LINKAGE SECTION.                                                 02180000
+024173                                                                  02190000
+024174 01  IO-PCB.                                                      02200000
+024175     05  IO-PCB-LTERM                   PIC X(08).                02210000
+024176     05  FILLER                         PIC X(02).                02220000
+024177     05  IO-PCB-STATUS                  PIC X(02).                02230000
+024178     05  FILLER                         PIC X(28).                02240000
+024179                                                                  02250000
+024180 01  INVDATA-IN-PCB.                                              02260000
+024181     05  INVDATA-IN-PCB-NAME            PIC X(08)                 02270000
+024182                                        VALUE "MDEXG100".         02270100
+024183     05  FILLER                         PIC X(02).                02280000
+024184     05  INVDATA-IN-PCB-STATUS          PIC X(02).                02290000
+024185     05  FILLER                         PIC X(28).                02300000
+024186                                                                  02380000
+036040 01  ERROR-PCB.                                                   02380010
+036050     05  ERROR-PCB-NAME                 PIC X(08)                 02380020
+036051                                        VALUE "MDEXG101".         02380021
+036060     05  FILLER                         PIC X(02).                02380030
+036070     05  ERROR-PCB-STATUS               PIC X(02).                02380040
+036080     05  FILLER                         PIC X(28).                02380050
+036081                                                                  02380100
+036082/*****************************************************************02390000
+036083*              P R O C E D U R E   D I V I S I O N               *02400000
+036084******************************************************************02410000
+036085 PROCEDURE DIVISION.                                              02420000
+036086                                                                  02430000
+036087******************************************************************02440000
+036088*                        M A I N L I N E                         *02450000
+036089******************************************************************02460000
+036090 0000P-MAINLINE.                                                  02470000
+036091                                                                  02480000
+036092     ENTRY "DLITCBL" USING IO-PCB                                 02490000
+036093                           INVDATA-IN-PCB                         02500000
+036094                           ERROR-PCB                              02500100
+036095                                                                  02520000
+036096     PERFORM 0100I-INITIALIZATION                                 02530000
+036097     PERFORM 0500P-LOAD-INVEHLN                                   02531001
+036098     PERFORM 0550P-LOAD-INCNTRY                                   02532001
+036099     PERFORM 1000P-PROCESS-TRANSACTION UNTIL INPUT-EOF            02540001
+036100     PERFORM 0200I-CONCLUSION                                     02550000
+036200     IF SEND-EMAIL                                                02550100
+036300        MOVE +3 TO RETURN-CODE                                    02550200
+036301     END-IF                                                       02550300
+036302     GOBACK                                                       02560000
+036303     .                                                            02570000
+036304                                                                  02580000
+036305 COPY CPESEBIC.                                                   02590000
+036306*- BMPSHELL INITIALIZATION AND CONCLUSION                         02590100
+036307                                                                  02600000
+081300                                                                  02605800
+081301/*****************************************************************02620000
+081302* INITIALIZE THE CHECKPOINT SAVE AREA                            *02630000
+081303******************************************************************02640000
+081304 0300P-INITIALIZE-SAVE-AREA.                                      02650000
+081305     CONTINUE                                                     02650100
+081306     .                                                            02660000
+081307                                                                  02670000
+081308/*****************************************************************02680000
+081309* INITIALIZE THE REPORT TITLES.                                  *02690000
+081310******************************************************************02700000
+081320 0350P-INITIALIZE-REPORT-TITLES.                                  02710000
+081321     CONTINUE                                                     02710100
+081322     .                                                            02720000
+081323                                                                  02730000
+081324/*****************************************************************02740000
+081325* PROGRAM SPECIFIC INITIALIZATION                                *02750000
+081326******************************************************************02760000
+081327 0400P-INITIALIZE-OTHER.                                          02770000
+081328                                                                  02770200
+081329     INITIALIZE PROGRAM-SWITCHES                                  02770300
+081330                                                                  02770400
+081331     PERFORM 0410P-SELECT-SYSPARM-BATCHCTL                        02770700
+081332     PERFORM 5000P-GET-NEXT-INPUT-RECORD                          02770800
+081333                                                                  02780000
+081334     IF SC-IMS-STAT-END-OF-DB                                     02780100
+081335         AND PV-COUNT-BATCH = ZERO                                02780200
+081336             MOVE MSG-INPUT-FILE-IS-EMPTY                         02780300
+081337                                 TO ERROR-MESSAGE-1               02780400
+081338             PERFORM 7000P-WRITE-ERROR-RECORD                     02780500
+081339             SET SEND-EMAIL      TO TRUE                          02780610
+081340     END-IF                                                       02780700
+081341     .                                                            02960000
+081342                                                                  02970000
+081343/*****************************************************************02980000
+081344* FETCH THE BATCH NUMBERS FROM THE GENERIC SYSTEM PARM TABLE.    *02990000
+081345******************************************************************03000000
+081346 0410P-SELECT-SYSPARM-BATCHCTL.                                   03010000
+081347                                                                  03020000
+081348     MOVE PL-SYSTEM-CD           TO GNT-SYSTEM-CD                 03030000
+081349     MOVE SYSPARM-TBL-ID         TO GNT-TABLE-ID                  03040000
+081350     MOVE PL-PGM-NAME            TO SYSPARM-KEY-SYP-PGM-NAME      03050000
+081351     MOVE PL-BATCHCTL            TO SYSPARM-KEY-SYP-PARM-ID       03060000
+081352     MOVE SYSPARM-KEY            TO GNT-KEY-DATA                  03070000
+081353     MOVE SL-YES                 TO GNT-SW-ACTIVE                 03080000
+081354                                                                  03090000
+081355     PERFORM 9200I-SELECT-MEXS016-GENERIC2                        03100000
+081356                                                                  03110000
+081357     IF MEXS016-NOT-FOUND                                         03120000
+081358        MOVE MSG-MEXS016-SYSPARM                                  03130016
+081359                                 TO ABEND-MSG                     03131016
+081360        MOVE PL-0410P            TO ABEND-PARAGRAPH               03140016
+081361        PERFORM 9999I-ABEND                                       03150000
+081362     END-IF                                                       03160000
+081363                                                                  03170000
+081364     MOVE GNT-ATTRIBUTE-DATA     TO PV-EXWWB915-SYSPARM-BATCHCTL  03180000
+081365                                                                  03190000
+081366     MOVE PV-EXWWB915-CURR-BATCH-NO                               03200000
+081367                                 TO PV-INVDATA-CNTL-CUR-BATCH     03200100
+081368     MOVE SPACES                 TO AUDIT-RECORD                  03210016
+081369     WRITE AUDIT-RECORD                                           03220000
+081370                                                                  03230000
+081371     ADD +1                      TO PV-EXWWB915-CURR-BATCH-NO     03260016
+081372     .                                                            03280000
+081373                                                                  03291001
+081374/*****************************************************************03291104
+081375* LOAD INVOICING SYSTEM VEHICLE LINE.                            *03291204
+081376******************************************************************03291304
+081377 0500P-LOAD-INVEHLN.                                              03291401
+081378                                                                  03291402
+081379     INITIALIZE INVEHLN-X                                         03291502
+081380     INITIALIZE PS-INVEHLN-EOF-SW                                 03291610
+081381                                                                  03291701
+081382     OPEN INPUT INVEHLN-FILE                                      03291802
+081383                                                                  03291901
+081384     PERFORM UNTIL INVEHLN-EOF                                    03292010
+081385         READ INVEHLN-FILE              INTO WS-INVOICE-VL        03292102
+081386           AT END SET INVEHLN-EOF         TO TRUE                 03292210
+081387         END-READ                                                 03292301
+081388                                                                  03292401
+081389         IF INVEHLN-EOF                                           03292510
+081390            CONTINUE                                              03292601
+081391         ELSE                                                     03292701
+081392            ADD +1 TO INVEHLN-X                                   03292802
+081393            IF INVEHLN-X > WS-INVEHLN-ROW-MAX                     03292902
+081394               STRING MSG-TBL-CNT                                 03292903
+081395                      "TBL= " V-VL-TBL-ID                         03292904
+081396                      DELIMITED BY SIZE INTO ABEND-MSG            03292905
+081397               MOVE "0500P"               TO ABEND-PARAGRAPH      03292906
+081398               PERFORM 9999I-ABEND                                03292908
+081399            END-IF                                                03294001
+081400                                                                  03294101
+081401            MOVE INV-VL-CD        TO INCL-VEH-LN-DATA(INVEHLN-X)  03294216
+081402         END-IF                                                   03294301
+081403     END-PERFORM                                                  03294401
+081404                                                                  03294501
+081405     CLOSE INVEHLN-FILE                                           03294601
+081406     .                                                            03294701
+081407                                                                  03294801
+081408/*****************************************************************03294904
+081409* LOAD INVOICING SYSTEM COUNTRY.                                 *03295004
+081410******************************************************************03295104
+081420 0550P-LOAD-INCNTRY.                                              03295309
+081421                                                                  03295310
+081422     INITIALIZE INCNTRY-X                                         03295404
+081423     INITIALIZE PS-INCNTRY-EOF-SW                                 03295510
+081424                                                                  03295601
+081425     OPEN INPUT INCNTRY-FILE                                      03295704
+081426                                                                  03295801
+081427     PERFORM UNTIL INCNTRY-EOF                                    03295910
+081428         READ INCNTRY-FILE               INTO WS-SOLD-TO-DLR-CTRY 03296004
+081429           AT END SET INCNTRY-EOF          TO TRUE                03296110
+081430         END-READ                                                 03296201
+081431                                                                  03296301
+081432         IF INCNTRY-EOF                                           03296410
+081433            CONTINUE                                              03296501
+081434         ELSE                                                     03296601
+081435            ADD +1                         TO INCNTRY-X           03296704
+081436            IF INCNTRY-X > WS-INCNTRY-ROW-MAX                     03296804
+081437                STRING MSG-TBL-CNT                                03296805
+081438                       "TBL= " V-CNTRY-TBL-ID                     03296806
+081439                       DELIMITED BY SIZE INTO ABEND-MSG           03296807
+081440                MOVE "0550P"               TO ABEND-PARAGRAPH     03296808
+081441                PERFORM 9999I-ABEND                               03296809
+081442            END-IF                                                03297901
+081443                                                                  03298001
+081444            MOVE SLD-TO-DLR-CTRY-CD        TO                     03298116
+081445                 INCL-DLR-CNTRY-CD (INCNTRY-X)                    03298117
+081446            MOVE SLD-TO-DLR-ISO-CTRY-CD    TO                     03298118
+081447                 INCL-CNTRY-CD (INCNTRY-X)                        03298119
+081448         END-IF                                                   03298201
+081449     END-PERFORM                                                  03298301
+081450                                                                  03298401
+081451     CLOSE INCNTRY-FILE                                           03298504
+081452     .                                                            03298601
+081453                                                                  03299001
+081454/*****************************************************************03300000
+081455* PROGRAM SPECIFIC CONCLUSION                                    *03310000
+081456******************************************************************03320000
+081457 0700P-CONCLUDE-OTHER.                                            03330000
+081458     .                                                            03390000
+081459                                                                  03400000
+081460/*****************************************************************03410000
+081461* PROGRAM SPECIFIC PROCESSING.                                   *03420000
+081462******************************************************************03430000
+081463 1000P-PROCESS-TRANSACTION.                                       03440001
+081464                                                                  03440002
+081465     ADD +1 TO PV-INPUT-REC-CNT                                   03460000
+081466     EVALUATE TRUE                                                03470000
+081467         WHEN HEADER-NEEDED                                       03480000
+081468         AND  NOT INV-HEADER-RECORD                               03490000
+081469              MOVE MSG-HEADER-NONE   TO ABEND-MSG                 03500000
+081470              MOVE "1000P"           TO ABEND-PARAGRAPH           03510000
+081471              PERFORM 8000P-WRITE-AUDIT-DETAIL                    03520000
+081472              PERFORM 9999I-ABEND                                 03530000
+081473                                                                  03540000
+081474         WHEN TRAILER-NEEDED                                      03550000
+081475         AND  INV-HEADER-RECORD                                   03560000
+081476              MOVE MSG-HEADER-BAD    TO ABEND-MSG                 03570000
+081477              MOVE "1000P"           TO ABEND-PARAGRAPH           03580000
+081478              PERFORM 8000P-WRITE-AUDIT-DETAIL                    03590000
+081479              PERFORM 9999I-ABEND                                 03600000
+081480                                                                  03610000
+081481         WHEN INV-HEADER-RECORD                                   03620000
+081482              PERFORM 1100P-PROCESS-HEADER-RECORD                 03630000
+081483              SET TRAILER-NEEDED     TO TRUE                      03640016
+081484                                                                  03650000
+081485         WHEN INV-TRAILER-RECORD                                  03660000
+081486              PERFORM 1200P-PROCESS-TRAILER-RECORD                03670000
+081487              SET HEADER-NEEDED      TO TRUE                      03680016
+081488                                                                  03690000
+081489         WHEN OTHER                                               03700000
+081490              PERFORM 2000P-PROCESS-OTHER-TRANS                   03710013
+081491                                                                  03720010
+081492     END-EVALUATE                                                 03750000
+081493                                                                  03751010
+081494     PERFORM 9400I-INCREMENT-CHKP-COUNT                           03751020
+081495     PERFORM 5000P-GET-NEXT-INPUT-RECORD                          03760013
+081496                                                                  03760014
+081497     IF SC-IMS-STAT-END-OF-DB                                     03760015
+081498         AND TRAILER-NEEDED                                       03760016
+081499             MOVE MSG-TRAILER-MISSING TO ABEND-MSG                03760017
+081500             MOVE "1000P"             TO ABEND-PARAGRAPH          03760019
+081501             PERFORM 8000P-WRITE-AUDIT-DETAIL                     03760020
+081502             PERFORM 9999I-ABEND                                  03760021
+081503     END-IF                                                       03760030
+081504     .                                                            03780000
+081505                                                                  03790000
+081506/*****************************************************************03800000
+081507* PROCESS HEADER RECORD                                          *03810000
+081508******************************************************************03820000
+081509 1100P-PROCESS-HEADER-RECORD.                                     03830000
+081510                                                                  03840000
+081511     PERFORM 1120P-EDIT-PROD-SYSTEM                               03850000
+081512     PERFORM 1130P-EDIT-BATCH-NUMBER                              03860000
+081513     .                                                            03870000
+081514                                                                  03880000
+081515/*****************************************************************03890000
+081516* EDIT PROD SYSTEM                                               *03900000
+081517******************************************************************03910000
+081518 1120P-EDIT-PROD-SYSTEM.                                          03920000
+081519                                                                  03930000
+081520     MOVE SL-SYSTEM-CD-EXWW      TO GNT-SYSTEM-CD                 03940016
+081521     MOVE SYSPARM-TBL-ID         TO GNT-TABLE-ID                  03950016
+081522     MOVE PL-PGM-NAME            TO SYSPARM-KEY-SYP-PGM-NAME      03960016
+081523     MOVE PL-BATCHCTL            TO SYSPARM-KEY-SYP-PARM-ID       03970017
+081524     MOVE SYSPARM-KEY            TO GNT-KEY-DATA                  03980016
+081525     MOVE SL-YES                 TO GNT-SW-ACTIVE                 03990016
+081526                                                                  04000000
+081527     PERFORM 9200I-SELECT-MEXS016-GENERIC2                        04010000
+081528                                                                  04020000
+081529     IF  MEXS016-FOUND                                            04030000
+081530          MOVE GNT-ATTRIBUTE-DATA (1:5)                           04040016
+081531                                 TO PV-HDR-BATCH-NBR              04041016
+081532     ELSE                                                         04050000
+081533          MOVE MSG-HDR-PROD-SYS-2                                 04060016
+081534                                 TO ABEND-MSG                     04061016
+081535          MOVE "1120P"           TO ABEND-PARAGRAPH               04070016
+081536          PERFORM 8000P-WRITE-AUDIT-DETAIL                        04080000
+081537          PERFORM 9999I-ABEND                                     04090000
+081538     END-IF                                                       04100000
+081539     .                                                            04110000
+081540                                                                  04120000
+081541/*****************************************************************04130000
+081542* EDIT BATCH NUMBER                                              *04140000
+081543******************************************************************04150000
+081544 1130P-EDIT-BATCH-NUMBER.                                         04160000
+081545                                                                  04170000
+081546     EVALUATE TRUE                                                04180000
+081547         WHEN INVDATA-HDR-CURR-BATCH NOT NUMERIC                  04190011
+081548              MOVE MSG-HDR-BATCH-NBR-1  TO ABEND-MSG              04200011
+081549              MOVE "1130P"              TO ABEND-PARAGRAPH        04210011
+081550              PERFORM 8000P-WRITE-AUDIT-DETAIL                    04220011
+081551              PERFORM 9999I-ABEND                                 04230011
+081552                                                                  04240011
+081553         WHEN INVDATA-HDR-CURR-BATCH NOT = PV-HDR-BATCH-NBR       04250011
+081554              MOVE MSG-HDR-BATCH-NBR-2  TO ABEND-MSG              04260011
+081555              MOVE "1130P"              TO ABEND-PARAGRAPH        04270011
+081556              PERFORM 8000P-WRITE-AUDIT-DETAIL                    04280011
+081557              PERFORM 9999I-ABEND                                 04290011
+081558                                                                  04290012
+081559         WHEN INVDATA-HDR-CURR-BATCH = PV-HDR-BATCH-NBR           04290013
+081560             MOVE "SYSPARM INPUT BATCH NUMBER :"                  04290014
+081570                                        TO AUDIT-LABEL            04290015
+081580             MOVE INVDATA-HDR-CURR-BATCH                          04290016
+081590                                        TO AUDIT-DATA             04290017
+081600             WRITE AUDIT-RECORD                                   04290019
+081700             MOVE INVDATA-HDR-CURR-BATCH                          04290020
+081800                                        TO PV-BATCH-NBR           04290021
+081801             MOVE INVDATA-HDR-CURR-DATE TO PV-BATCH-DT            04290030
+081802     END-EVALUATE                                                 04300000
+081803     .                                                            04310000
+081804                                                                  04320000
+081805/*****************************************************************04330000
+081806* PROCESS TRAILER RECORD                                         *04340000
+081807******************************************************************04350000
+081808 1200P-PROCESS-TRAILER-RECORD.                                    04360000
+081809                                                                  04370000
+081810     IF  INVDATA-TLR-CURR-BATCH NOT = PV-HDR-BATCH-NBR            04380000
+081811         MOVE MSG-TRAILER-BAD           TO ABEND-MSG              04390016
+081812         MOVE "1200P"                   TO ABEND-PARAGRAPH        04400016
+081813         PERFORM 8000P-WRITE-AUDIT-DETAIL                         04410000
+081814         PERFORM 9999I-ABEND                                      04420000
+081815     END-IF                                                       04430000
+081816                                                                  04440000
+081817     IF  INVDATA-TLR-CNT + 2 = PV-COUNT-BATCH                     04450000
+081818         MOVE ZERO                      TO PV-COUNT-BATCH         04460016
+081819     ELSE                                                         04470000
+081820         MOVE MSG-TRL-NBR-RECS          TO ABEND-MSG              04480016
+081821         MOVE "1200P"                   TO ABEND-PARAGRAPH        04490016
+081822         PERFORM 8000P-WRITE-AUDIT-DETAIL                         04500000
+081823         PERFORM 9999I-ABEND                                      04510000
+081824     END-IF                                                       04520000
+081825                                                                  04520010
+081826     IF  PV-BYPASS-REC-CNT + PV-INS-UPD-REC-CNT =                 04520020
+081827         INVDATA-TLR-CNT                                          04520021
+081828             MOVE "TOTAL INSERTED OR UPDATED  : "                 04520022
+081829                                        TO AUDIT-LABEL            04520023
+081830             MOVE PV-INS-UPD-REC-CNT    TO AUDIT-DATA             04520024
+081840             WRITE AUDIT-RECORD                                   04520026
+081850             MOVE "TOTAL RECS BYPASSED        : "                 04520029
+081860                                        TO AUDIT-LABEL            04520030
+081870             MOVE PV-BYPASS-REC-CNT     TO AUDIT-DATA             04520031
+081880             WRITE AUDIT-RECORD                                   04520032
+081890             MOVE SPACES                TO AUDIT-RECORD           04520033
+081900             WRITE AUDIT-RECORD                                   04520034
+081901                                                                  04520035
+081902             MOVE ZERO                  TO PV-BYPASS-REC-CNT      04520036
+081903             MOVE ZERO                  TO PV-INS-UPD-REC-CNT     04520037
+081904     ELSE                                                         04520040
+081905         MOVE MSG-TRL-NBR-RECS-2        TO ABEND-MSG              04520050
+081906         MOVE "1200P"                   TO ABEND-PARAGRAPH        04520060
+081907         PERFORM 8000P-WRITE-AUDIT-DETAIL                         04520070
+081908         PERFORM 9999I-ABEND                                      04520080
+081909     END-IF                                                       04520090
+081910                                                                  04520100
+081911****     UPDATE SYSPARM BATCH NBR                                 04540000
+081912                                                                  04550000
+081913     MOVE PV-HDR-BATCH-NBR              TO PV-ATTRIBUTE-DATA      04560016
+081914     ADD +1                             TO PV-ATTRIBUTE-DATA      04570016
+081915                                                                  04580000
+081916     MOVE SL-SYSTEM-CD-EXWW             TO GNT-SYSTEM-CD          04590016
+081917     MOVE SYSPARM-TBL-ID                TO GNT-TABLE-ID           04600016
+081918     MOVE PL-PGM-NAME                   TO                        04610016
+081919          SYSPARM-KEY-SYP-PGM-NAME                                04611016
+081920     MOVE PL-BATCHCTL                   TO                        04620017
+081921          SYSPARM-KEY-SYP-PARM-ID                                 04621016
+081922     MOVE SYSPARM-KEY                   TO GNT-KEY-DATA           04630016
+081923     MOVE PV-ATTRIBUTE-DATA             TO GNT-ATTRIBUTE-DATA     04640016
+081924                                                                  04650000
+081925     PERFORM 9210I-UPDATE-MEXS016-GENERIC2                        04660014
+081926     .                                                            04670000
+081927                                                                  04680000
+081928/*****************************************************************04681004
+081929* PROCESS OTHER TRANS (DETAIL RECORD, NOT HEADER OR TRAILER)     *04682004
+081930******************************************************************04683004
+081940 2000P-PROCESS-OTHER-TRANS.                                       04683113
+081950                                                                  04683114
+081960     INITIALIZE PS-ERROR-SW                                       04683115
+081970     INITIALIZE ERROR-RECORD                                      04683116
+081971                                                                  04683117
+081972     PERFORM 2100P-EDIT-VIN                                       04683213
+081973     PERFORM 2200P-SEARCH-VL-TABLE                                04683313
+081974                                                                  04683404
+081975     IF VEHLN-FOUND                                               04683511
+081976        AND ERROR-NOT-FOUND                                       04683512
+081977        IF  (IDR-SLD-DC-DIV = PL-F                                04683616
+081978        OR   IDR-SLD-DC-DIV = PL-C)                               04683716
+081979            PERFORM 2300P-MOVE-MEXW046                            04683813
+081980        ELSE                                                      04683814
+081990            ADD +1                      TO PV-BYPASS-REC-CNT      04683815
+082000            MOVE IDR-VIN                TO ERROR-VIN              04683816
+082100            MOVE MSG-DIV-NOT-FOUND                                04683817
+082200                                        TO ERROR-MESSAGE-1        04683818
+082300            MOVE PV-BATCH-DT            TO ERROR-BATCH-DT         04683819
+082400            MOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR        04683820
+082500            PERFORM 7000P-WRITE-ERROR-RECORD                      04683821
+082600        END-IF                                                    04683822
+082700     ELSE                                                         04683823
+082800        ADD +1                      TO PV-BYPASS-REC-CNT          04683824
+082801     END-IF                                                       04683830
+082802     .                                                            04683904
+082803                                                                  04684004
+082804/*****************************************************************04684104
+082805* VIN CANNOT BE SPACES OR HIGH VALUES.  RECORD WILL BE BYPASSED. *04684213
+082806******************************************************************04684304
+082807 2100P-EDIT-VIN.                                                  04684413
+082808                                                                  04684430
+082809     IF IDR-VIN > SPACES                                          04684512
+082810         AND IDR-VIN NOT = HIGH-VALUES                            04684612
+082811         INSPECT IDR-VIN CONVERTING                               04684913
+082812               PL-CHAR-ALPHABETIC-LOWER TO                        04685012
+082813               PL-CHAR-ALPHABETIC-UPPER                           04685112
+082814         PERFORM 2150P-VALIDATE-17-CHAR-VIN                       04685413
+082815     ELSE                                                         04685414
+082816         MOVE IDR-VIN                   TO ERROR-VIN              04685418
+082817         MOVE MSG-VIN-SPACES-OR-HIGH-VALUES                       04685420
+082818                                        TO ERROR-MESSAGE-1        04685421
+082819         MOVE PV-BATCH-DT               TO ERROR-BATCH-DT         04685422
+082820         MOVE PV-BATCH-NBR              TO ERROR-BATCH-NBR        04685423
+082830         PERFORM 7000P-WRITE-ERROR-RECORD                         04685424
+082840         SET SEND-EMAIL                 TO TRUE                   04685430
+082841         SET ERROR-FOUND                TO TRUE                   04685440
+082842     END-IF                                                       04686712
+082843                                                                  04686713
+082844     IF ERROR-FOUND                                               04686714
+082845        CONTINUE                                                  04686715
+082846     ELSE                                                         04686716
+082847        SET ERROR-NOT-FOUND             TO TRUE                   04686717
+082848     END-IF                                                       04686718
+082849     .                                                            04686719
+082850                                                                  04686812
+082851/*****************************************************************04686913
+082852* VIN CANNOT BE SPACES OR HIGH VALUES. RECORD WILL BE BYPASSED.  *04687013
+082853******************************************************************04687113
+082854 2150P-VALIDATE-17-CHAR-VIN.                                      04687213
+082855                                                                  04687214
+082856     MOVE ZERO                           TO PV-VIN-SPACE-COUNT    04687314
+082857     INSPECT IDR-VIN TALLYING                                     04687412
+082858             PV-VIN-SPACE-COUNT FOR ALL " "                       04687512
+082859                                                                  04687613
+082860     IF PV-VIN-SPACE-COUNT > 0                                    04687712
+082870         MOVE IDR-VIN                    TO ERROR-VIN             04687713
+082880         MOVE MSG-VIN-CONTAINS-SPACES    TO ERROR-MESSAGE-1       04687714
+082890         MOVE PV-BATCH-DT                TO ERROR-BATCH-DT        04687716
+082900         MOVE PV-BATCH-NBR               TO ERROR-BATCH-NBR       04687717
+083000         PERFORM 7000P-WRITE-ERROR-RECORD                         04687718
+083100         SET SEND-EMAIL                  TO TRUE                  04687719
+083101         SET ERROR-FOUND                 TO TRUE                  04687720
+083102     ELSE                                                         04688412
+083103         MOVE ZERO                       TO PV-VIN-SP-CHAR-COUNT  04688413
+083104         INSPECT IDR-VIN TALLYING                                 04688414
+083105                 PV-VIN-SP-CHAR-COUNT FOR ALL                     04688416
+083106         '*' '(' ')' '!' '@' 'µ' '$' '#' '&' '+' '=' '{' '}'      04688417
+083107          '' 'Ù' ':' ';' '/' '\' '?' '>' '<' '%' '`' '_' '|'     04688418
+083108         IF PV-VIN-SP-CHAR-COUNT > 0                              04688419
+083109             MOVE IDR-VIN                TO ERROR-VIN             04688420
+083110             MOVE MSG-VIN-CONTAINS-SPEC-CHARS                     04688421
+083120                                         TO ERROR-MESSAGE-1       04688422
+083130             MOVE PV-BATCH-DT            TO ERROR-BATCH-DT        04688430
+083140             MOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR       04688440
+083150             PERFORM 7000P-WRITE-ERROR-RECORD                     04688450
+083160             SET SEND-EMAIL              TO TRUE                  04688460
+083161             SET ERROR-FOUND             TO TRUE                  04688470
+083162         END-IF                                                   04690514
+083163     END-IF                                                       04690515
+083164     .                                                            04690712
+083165/*****************************************************************04690812
+083166* SEARCH VL TABLE.  IF VL NOT FOUND THE RECORD WILL BE BYPASSED. *04690912
+083167******************************************************************04691012
+083168 2200P-SEARCH-VL-TABLE.                                           04691113
+083169                                                                  04691114
+083170     INITIALIZE PS-VEHLN-SW                                       04691212
+083171                                                                  04691312
+083172     PERFORM                                                      04691412
+083173         VARYING INVEHLN-X FROM +1 BY +1                          04691512
+083174           UNTIL IDR-INV-VEH-LINE =                               04691612
+083175                   INCL-VEH-LN-DATA(INVEHLN-X)                    04691712
+083176              OR INVEHLN-X > WS-INVEHLN-ROW-MAX                   04691812
+083177     END-PERFORM                                                  04692520
+083178                                                                  04692521
+083179     IF IDR-INV-VEH-LINE = INCL-VEH-LN-DATA(INVEHLN-X)            04692530
+083180          SET VEHLN-FOUND TO TRUE                                 04692540
+083190     ELSE                                                         04692541
+083200          MOVE IDR-VIN                TO ERROR-VIN                04692542
+083300          MOVE MSG-VEH-LINE-NOT-FOUND TO ERROR-MESSAGE-1          04692543
+083400          MOVE IDR-INV-VEH-LINE       TO ERROR-MESSAGE-2          04692544
+083500          MOVE PV-BATCH-DT            TO ERROR-BATCH-DT           04692545
+083600          MOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR          04692546
+083601          PERFORM 7000P-WRITE-ERROR-RECORD                        04692547
+083602     END-IF                                                       04692550
+083603     .                                                            04692604
+083604                                                                  04692704
+083605/*****************************************************************04692804
+083606* MOVE INPUT DATA TO TABLE VARIBLES TO INSERT INTO MEXW046       *04692906
+083607******************************************************************04693004
+083608 2300P-MOVE-MEXW046.                                              04693113
+083609                                                                  04693114
+083610     MOVE IDR-VIN                  TO NAV-VIN-C,                  04693204
+083611                                      NAO-VIN-C                   04693205
+083612     MOVE IDR-DLR-VEH-DESC         TO NAV-DLR-VEH-X               04693304
+083613     MOVE IDR-INV-VEH-LINE         TO NAV-INV-VL-C                04693404
+083614     MOVE IDR-EXT-COLOR            TO NAV-EXT-CLR-N               04693504
+083615     MOVE IDR-INT-COLOR            TO NAV-INT-CLR-N               04693604
+083616     MOVE IDR-BODY-CD              TO NAV-BODY-C                  04693704
+083617     MOVE IDR-PEP-CD               TO NAV-PEP-C                   04693804
+083618                                                                  04693904
+083619     PERFORM 2400P-GET-MKT-MDL-YR                                 04694014
+083620                                                                  04694110
+083621     MOVE IDR-SLD-DLR-CODE         TO NAV-SLD-TO-DLR-C            04694204
+083622     MOVE IDR-SLD-PA-CODE          TO NAV-PA-DLR-C                04694304
+083623     MOVE IDR-FTC-DLR              TO NAV-FTC-DLR-C               04694404
+083624     MOVE IDR-INVOICE-TYPE         TO NAV-INV-TYPE-C              04694504
+083625     MOVE IDR-PRICE-LEVEL          TO NAV-PRICE-LVL-C             04694604
+083626     MOVE IDR-BASE-VEH-AMT         TO NAV-BASE-VEH-A              04694704
+083627     MOVE IDR-BASE-DLR-PRICE       TO NAV-BASE-DLR-PRICE-A        04694804
+083628     MOVE IDR-BASE-UNIT-ADJ-MEMO   TO NAV-BASE-UNIT-ADJ-MEMO-A    04694904
+083629     MOVE IDR-OPT-TOT-DLR          TO NAV-TOT-DLR-OPTS-A          04695004
+083630     MOVE IDR-OPT-ADJ-MEMO         TO NAV-OPT-ADJ-MEMO-A          04695104
+083631     MOVE IDR-DEST-DELIV-CHG       TO NAV-DEST-DELIV-CHG-A        04695204
+083632                                                                  04695304
+083633     PERFORM 2500P-MOVE-DISCOUNT-AMTS                             04695414
+083634                                                                  04695504
+083635     MOVE IDR-OPT-HLDBK            TO NAV-OPT-HOLDBACK-A          04695604
+083636     MOVE IDR-BASE-HLDBK           TO NAV-BASE-HOLDBACK-A         04695704
+083637     MOVE IDR-FDAF-ASSESS          TO NAV-FDAF-ASSESS-A           04695804
+083638     MOVE IDR-FIN-CHG              TO NAV-FIN-COST-A              04695904
+083639     MOVE IDR-FUEL-CHG             TO NAV-FUEL-CHG-A              04696004
+083640     MOVE IDR-INV-TOTAL-AMT        TO NAV-INV-TOT-A               04696104
+083641                                                                  04696204
+083642     PERFORM 2600P-GET-DLR-CNTRY                                  04696314
+083643                                                                  04696404
+083644     MOVE PL-Y                     TO NAV-REBILL-F                04696504
+083645     MOVE PL-PGM-NAME              TO NAV-UPDT-ID-C               04696505
+083646                                                                  04696604
+083647     PERFORM 4000P-INSERT-MEXW046                                 04696815
+083648     EVALUATE TRUE                                                04696904
+083649         WHEN SC-DB2-SQLCODE-OK                                   04697011
+083650              PERFORM 3000P-LOAD-MEXW047                          04697115
+083651         WHEN SC-DB2-SQLCODE-DUP-INSERT                           04697211
+083652              PERFORM 4100P-UPDATE-MEXW046                        04697315
+083653              PERFORM 4300P-DELETE-MEXW047                        04697415
+083654              PERFORM 3000P-LOAD-MEXW047                          04697515
+083655     END-EVALUATE.                                                04697604
+083656                                                                  04697704
+083657/*****************************************************************04697806
+083658* GET MARKET MODEL YEAR                                          *04697906
+083659******************************************************************04698006
+083660 2400P-GET-MKT-MDL-YR.                                            04698114
+083661                                                                  04698115
+083662     MOVE PL-SYSTEM-CD               TO GNT-SYSTEM-CD             04698211
+083663     MOVE PL-TABLE-ID                TO GNT-TABLE-ID              04698311
+083664     MOVE IDR-MDL-YR-DIGIT           TO GNT-KEY-DATA              04698411
+083665     MOVE SL-YES                     TO GNT-SW-ACTIVE             04698511
+083666     PERFORM 9200I-SELECT-MEXS016-GENERIC2                        04698606
+083667                                                                  04698706
+083668     IF MEXS016-FOUND                                             04698806
+083669         MOVE GNT-ATTRIBUTE-DATA     TO PV-MODEL-YEAR             04698912
+083670         MOVE PV-INT-MDL-YR          TO NAV-MKT-MDL-YR-R          04698914
+083680     ELSE                                                         04699006
+083690         MOVE IDR-VIN                TO ERROR-VIN                 04699007
+083700         MOVE MSG-MKT-MDL-YR-NOT-FOUND                            04699008
+083800                                     TO ERROR-MESSAGE-1           04699009
+083900         MOVE IDR-MDL-YR-DIGIT       TO ERROR-MESSAGE-2           04699010
+084000         MOVE PV-BATCH-DT            TO ERROR-BATCH-DT            04699011
+084100         MOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR           04699020
+084101         PERFORM 7000P-WRITE-ERROR-RECORD                         04699030
+084102         MOVE PL-FOUR-ZEROS      TO NAV-MKT-MDL-YR-R              04699031
+084103         SET SEND-EMAIL          TO TRUE                          04699040
+084104     END-IF                                                       04699612
+084105     .                                                            04699711
+084106                                                                  04699811
+084107/*****************************************************************04699911
+084108* MOVE DISCOUNT AMOUNTS                                          *04700011
+084109******************************************************************04700111
+084110 2500P-MOVE-DISCOUNT-AMTS.                                        04700214
+084111                                                                  04700215
+084112         IF IDR-BONUS-DISC-DESC(1) > SPACES                       04700411
+084113             MOVE IDR-BONUS-DISC-DESC(1)TO NAV-DLR-BONUS-DISC-1-X 04700511
+084114             MOVE IDR-BONUS-DISC-DLR(1) TO NAV-DLR-BONUS-DISC-1-A 04700611
+084115         ELSE                                                     04700612
+084116             MOVE SPACES                TO NAV-DLR-BONUS-DISC-1-X 04700613
+084117             MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-1-A 04700614
+084118         END-IF                                                   04700615
+084119                                                                  04700711
+084120         IF IDR-BONUS-DISC-DESC(2) > SPACES                       04700811
+084121             MOVE IDR-BONUS-DISC-DESC(2)TO NAV-DLR-BONUS-DISC-2-X 04700911
+084122             MOVE IDR-BONUS-DISC-DLR(2) TO NAV-DLR-BONUS-DISC-2-A 04701011
+084123         ELSE                                                     04701012
+084124             MOVE SPACES                TO NAV-DLR-BONUS-DISC-2-X 04701013
+084125             MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-2-A 04701014
+084126         END-IF                                                   04701015
+084127                                                                  04701111
+084128         IF IDR-BONUS-DISC-DESC(3) > SPACES                       04701211
+084129             MOVE IDR-BONUS-DISC-DESC(3)TO NAV-DLR-BONUS-DISC-3-X 04701311
+084130             MOVE IDR-BONUS-DISC-DLR(3) TO NAV-DLR-BONUS-DISC-3-A 04701411
+084131         ELSE                                                     04701412
+084132             MOVE SPACES                TO NAV-DLR-BONUS-DISC-3-X 04701413
+084133             MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-3-A 04701414
+084134         END-IF                                                   04701415
+084135                                                                  04701511
+084136         IF IDR-BONUS-DISC-DESC(4) > SPACES                       04701611
+084137             MOVE IDR-BONUS-DISC-DESC(4)TO NAV-DLR-BONUS-DISC-4-X 04701711
+084138             MOVE IDR-BONUS-DISC-DLR(4) TO NAV-DLR-BONUS-DISC-4-A 04701811
+084139         ELSE                                                     04701812
+084140             MOVE SPACES                TO NAV-DLR-BONUS-DISC-4-X 04701813
+084150             MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-4-A 04701814
+084151         END-IF                                                   04701815
+084152                                                                  04701911
+084153         IF IDR-BONUS-DISC-DESC(5) > SPACES                       04702011
+084154             MOVE IDR-BONUS-DISC-DESC(5)TO NAV-DLR-BONUS-DISC-5-X 04702111
+084155             MOVE IDR-BONUS-DISC-DLR(5) TO NAV-DLR-BONUS-DISC-5-A 04702211
+084156         ELSE                                                     04702212
+084157             MOVE SPACES                TO NAV-DLR-BONUS-DISC-5-X 04702213
+084158             MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-5-A 04702214
+084159         END-IF                                                   04702215
+084160                                                                  04702311
+084161         IF IDR-BONUS-DISC-DESC(6) > SPACES                       04702411
+084162             MOVE IDR-BONUS-DISC-DESC(6)TO NAV-DLR-BONUS-DISC-6-X 04702511
+084163             MOVE IDR-BONUS-DISC-DLR(6) TO NAV-DLR-BONUS-DISC-6-A 04702611
+084164         ELSE                                                     04702612
+084165             MOVE SPACES                TO NAV-DLR-BONUS-DISC-6-X 04702613
+084166             MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-6-A 04702614
+084167         END-IF                                                   04702615
+084168     .                                                            04702911
+084169                                                                  04703011
+084170/*****************************************************************04704014
+084171* GET ISO COUNTRY CODE                                           *04705014
+084172******************************************************************04706014
+084173 2600P-GET-DLR-CNTRY.                                             04707014
+084174                                                                  04707015
+084175     PERFORM                                                      04708016
+084176         VARYING INCNTRY-X FROM +1 BY +1                          04709016
+084177         UNTIL IDR-SLD-DC-DIV =                                   04710016
+084178                   INCL-DLR-CNTRY-CD(INCNTRY-X)                   04720016
+084179            OR INCNTRY-X > WS-INCNTRY-ROW-MAX                     04721016
+084180     END-PERFORM                                                  04721017
+084190                                                                  04721216
+084200     IF IDR-SLD-DC-DIV = INCL-DLR-CNTRY-CD(INCNTRY-X)             04721616
+084300        MOVE INCL-CNTRY-CD(INCNTRY-X) TO                          04721716
+084400             NAV-DLR-COUNTRY-ISO3-C                               04721816
+084500     ELSE                                                         04721817
+084600         MOVE IDR-VIN                 TO ERROR-VIN                04721818
+084700         MOVE MSG-COUNTRY-NOT-FOUND   TO ERROR-MESSAGE-1          04721819
+084800         MOVE IDR-SLD-DC-DIV          TO ERROR-MESSAGE-2          04721820
+084900         MOVE PV-BATCH-DT             TO ERROR-BATCH-DT           04721830
+085000         MOVE PV-BATCH-NBR            TO ERROR-BATCH-NBR          04721840
+085100         PERFORM 7000P-WRITE-ERROR-RECORD                         04721850
+085200         SET SEND-EMAIL               TO TRUE                     04721860
+085300     END-IF                                                       04722116
+085301                                                                  04722117
+085302     .                                                            04722214
+085303                                                                  04722307
+085304/*****************************************************************04722410
+085305* LOAD MEXW047 WITH DATA FROM IDR OTPIONS, STANDARD OPTIONS AND  *04722510
+085306* THE FIRST RAPID SPEC.                                          *04722611
+085307******************************************************************04722710
+085308 3000P-LOAD-MEXW047.                                              04722815
+085309                                                                  04722816
+085310     MOVE +1 TO NAO-SEQ-R                                         04722910
+085311                                                                  04723010
+085312     PERFORM 3100P-LOAD-IDR-OPTS                                  04723115
+085313     PERFORM 3200P-LOAD-STANDARD-OPTS                             04723215
+085314     PERFORM 3300P-LOAD-RAPID-SPEC                                04724015
+085315     .                                                            04730010
+085316                                                                  04830000
+085317/*****************************************************************04830110
+085318* LOAD IDR OPTIONS INTO TABLE MEXW047                            *04830210
+085319******************************************************************04830410
+085320 3100P-LOAD-IDR-OPTS.                                             04831015
+085321                                                                  04831017
+085322     PERFORM VARYING IDR-AG-IDX FROM +1 BY +1                     04833010
+085323       UNTIL IDR-AG-IDX > +87                                     04834010
+085324          OR (IDR-OPT-CODE (IDR-AG-IDX) = SPACES                  04834110
+085325         AND  IDR-OPT-DESC(IDR-AG-IDX)  = SPACES)                 04834210
+085326                                                                  04834310
+085327         MOVE IDR-OPT-CODE (IDR-AG-IDX)      TO                   04834510
+085328              NAO-OPTION-C                                        04834610
+085329         MOVE IDR-OPT-DESC (IDR-AG-IDX)      TO                   04834710
+085330              NAO-OPTION-N                                        04834810
+085331         MOVE IDR-OPT-DLR-PRICE (IDR-AG-IDX) TO                   04834910
+085332              NAO-OPTION-PRICE-A                                  04835010
+085333         MOVE PL-OPT                         TO                   04836010
+085334              NAO-SUB-HEADING-N                                   04837010
+085335         MOVE PL-PGM-NAME                    TO                   04837020
+085336              NAO-UPDT-ID-C                                       04837110
+085337         PERFORM 4200P-INSERT-MEXW047                             04837215
+085338                                                                  04837310
+085339         INITIALIZE NAO-OPTION-C                                  04837320
+085340         ADD +1 TO NAO-SEQ-R                                      04837410
+085341                                                                  04838010
+085342     END-PERFORM                                                  04839110
+085343     .                                                            04839210
+085344                                                                  04839310
+085345/*****************************************************************04839410
+085346* LOAD STANDARD OPTIONS INTO TABLE MEXW047                       *04839511
+085347******************************************************************04839610
+085348 3200P-LOAD-STANDARD-OPTS.                                        04839715
+085349                                                                  04839716
+085350     INITIALIZE NAO-OPTION-PRICE-A.                               04839717
+085351                                                                  04839718
+085352     PERFORM VARYING IDR-SE-IDX FROM +1 BY +1                     04839911
+085353       UNTIL IDR-SE-IDX > +64                                     04840010
+085354          OR IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-WARRANTY         04840111
+085355                                                                  04840211
+085356       EVALUATE TRUE                                              04840311
+085357           WHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-EXTERIOR      04840411
+085358               MOVE PL-EXTERIOR-2     TO NAO-SUB-HEADING-N        04840511
+085359           WHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-INTERIOR      04840611
+085360               MOVE PL-INTERIOR-2     TO NAO-SUB-HEADING-N        04840711
+085361           WHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-FUNCTIONAL    04840811
+085362               MOVE PL-FUNCTIONAL-2   TO NAO-SUB-HEADING-N        04840911
+085363           WHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-SAFETY        04841011
+085364               MOVE PL-SAFETY-2       TO NAO-SUB-HEADING-N        04841111
+085365           WHEN OTHER                                             04841211
+085366               IF IDR-STD-EQUIP-DESC(IDR-SE-IDX) > SPACES         04841212
+085367                   MOVE IDR-STD-EQUIP-DESC(IDR-SE-IDX)            04841411
+085368                                      TO NAO-OPTION-N             04841511
+085369                   MOVE PL-PGM-NAME   TO NAO-UPDT-ID-C            04841512
+085370                   PERFORM 4200P-INSERT-MEXW047                   04841615
+085380                   ADD +1 TO NAO-SEQ-R                            04841616
+085390               END-IF                                             04841617
+085391                                                                  04841618
+085392       END-EVALUATE                                               04841811
+085393                                                                  04841911
+085394     END-PERFORM                                                  04842011
+085395     .                                                            04842211
+085396                                                                  04842311
+085397/*****************************************************************04842411
+085398* LOAD FIRST OCCURENCE OF THE RAPID SPEC INTO TABLE MEXW047      *04842511
+085399******************************************************************04842611
+085400 3300P-LOAD-RAPID-SPEC.                                           04842715
+085500                                                                  04842716
+085501     IF IDR-RAPID-EQUIP(1) > SPACES                               04842717
+085502         MOVE IDR-RAPID-EQUIP(1)   TO NAO-OPTION-N                04842811
+085503         MOVE IDR-RAPID-AMT(1)     TO NAO-OPTION-PRICE-A          04842911
+085504         MOVE PL-RAPID-SPEC-HEADER TO NAO-SUB-HEADING-N           04843011
+085505         MOVE PL-PGM-NAME          TO NAO-UPDT-ID-C               04843012
+085506         PERFORM 4200P-INSERT-MEXW047                             04843013
+085507     END-IF                                                       04843014
+085508     .                                                            04843311
+085509                                                                  04843411
+085510/*****************************************************************04843513
+085511* INSERT MEXW046_NAV_INV_VIN                                     *04843613
+085512******************************************************************04843713
+085513 4000P-INSERT-MEXW046.                                            04843815
+085514                                                                  04843816
+085515     EXEC SQL                                                     04843913
+085516         INSERT INTO MEXW046_NAV_INV_VIN                          04844013
+085517                ( NAV_VIN_C                                       04844113
+085518                 ,NAV_DLR_VEH_X                                   04844213
+085519                 ,NAV_INV_VL_C                                    04844313
+085520                 ,NAV_EXT_CLR_N                                   04844413
+085530                 ,NAV_INT_CLR_N                                   04844513
+085540                 ,NAV_BODY_C                                      04844613
+085550                 ,NAV_PEP_C                                       04844713
+085560                 ,NAV_MKT_MDL_YR_R                                04844813
+085570                 ,NAV_SLD_TO_DLR_C                                04844913
+085580                 ,NAV_PA_DLR_C                                    04845013
+085590                 ,NAV_FTC_DLR_C                                   04845113
+085600                 ,NAV_INV_TYPE_C                                  04845213
+085700                 ,NAV_PRICE_LVL_C                                 04845313
+085800                 ,NAV_BASE_VEH_A                                  04845413
+085900                 ,NAV_BASE_DLR_PRICE_A                            04845513
+086000                 ,NAV_BASE_UNIT_ADJ_MEMO_A                        04845613
+086100                 ,NAV_TOT_DLR_OPTS_A                              04845713
+086200                 ,NAV_OPT_ADJ_MEMO_A                              04845913
+086300                 ,NAV_DEST_DELIV_CHG_A                            04846013
+086400                 ,NAV_DLR_BONUS_DISC_1_X                          04846113
+086500                 ,NAV_DLR_BONUS_DISC_1_A                          04846213
+086600                 ,NAV_DLR_BONUS_DISC_2_X                          04846313
+086700                 ,NAV_DLR_BONUS_DISC_2_A                          04846413
+086800                 ,NAV_DLR_BONUS_DISC_3_X                          04846513
+086900                 ,NAV_DLR_BONUS_DISC_3_A                          04846613
+087000                 ,NAV_DLR_BONUS_DISC_4_X                          04846713
+087100                 ,NAV_DLR_BONUS_DISC_4_A                          04846813
+087200                 ,NAV_DLR_BONUS_DISC_5_X                          04846913
+087300                 ,NAV_DLR_BONUS_DISC_5_A                          04847013
+087400                 ,NAV_DLR_BONUS_DISC_6_X                          04847113
+087500                 ,NAV_DLR_BONUS_DISC_6_A                          04847213
+087600                 ,NAV_OPT_HOLDBACK_A                              04847313
+087700                 ,NAV_BASE_HOLDBACK_A                             04847413
+087800                 ,NAV_FDAF_ASSESS_A                               04847513
+087900                 ,NAV_FIN_COST_A                                  04847613
+088000                 ,NAV_FUEL_CHG_A                                  04847713
+088100                 ,NAV_INV_TOT_A                                   04847813
+088200                 ,NAV_DLR_COUNTRY_ISO3_C                          04847913
+088300                 ,NAV_REBILL_F                                    04848013
+088400                 ,NAV_UPDT_ID_C                                   04848113
+088500                 ,NAV_UPDT_S                                      04848213
+088600                 ,NAV_GMT_S                                       04848313
+088601                )                                                 04848314
+088602          VALUES(:NAV-VIN-C                                       04848413
+088603                ,:NAV-DLR-VEH-X                                   04848513
+088604                ,:NAV-INV-VL-C                                    04848613
+088605                ,:NAV-EXT-CLR-N                                   04848713
+088606                ,:NAV-INT-CLR-N                                   04848813
+088607                ,:NAV-BODY-C                                      04848913
+088608                ,:NAV-PEP-C                                       04849013
+088609                ,:NAV-MKT-MDL-YR-R                                04849113
+088610                ,:NAV-SLD-TO-DLR-C                                04849213
+088620                ,:NAV-PA-DLR-C                                    04849313
+088630                ,:NAV-FTC-DLR-C                                   04849413
+088640                ,:NAV-INV-TYPE-C                                  04849513
+088650                ,:NAV-PRICE-LVL-C                                 04849613
+088660                ,:NAV-BASE-VEH-A                                  04849713
+088670                ,:NAV-BASE-DLR-PRICE-A                            04849813
+088680                ,:NAV-BASE-UNIT-ADJ-MEMO-A                        04849913
+088690                ,:NAV-TOT-DLR-OPTS-A                              04850013
+088700                ,:NAV-OPT-ADJ-MEMO-A                              04850113
+088800                ,:NAV-DEST-DELIV-CHG-A                            04850213
+088900                ,:NAV-DLR-BONUS-DISC-1-X                          04850313
+089000                ,:NAV-DLR-BONUS-DISC-1-A                          04850413
+089100                ,:NAV-DLR-BONUS-DISC-2-X                          04850513
+089200                ,:NAV-DLR-BONUS-DISC-2-A                          04850613
+089300                ,:NAV-DLR-BONUS-DISC-3-X                          04850713
+089400                ,:NAV-DLR-BONUS-DISC-3-A                          04850813
+089500                ,:NAV-DLR-BONUS-DISC-4-X                          04850913
+089600                ,:NAV-DLR-BONUS-DISC-4-A                          04851013
+089700                ,:NAV-DLR-BONUS-DISC-5-X                          04851113
+089800                ,:NAV-DLR-BONUS-DISC-5-A                          04851213
+089900                ,:NAV-DLR-BONUS-DISC-6-X                          04851313
+090000                ,:NAV-DLR-BONUS-DISC-6-A                          04851413
+090100                ,:NAV-OPT-HOLDBACK-A                              04851513
+090200                ,:NAV-BASE-HOLDBACK-A                             04851613
+090300                ,:NAV-FDAF-ASSESS-A                               04851713
+090400                ,:NAV-FIN-COST-A                                  04851813
+090500                ,:NAV-FUEL-CHG-A                                  04851913
+090600                ,:NAV-INV-TOT-A                                   04852013
+090700                ,:NAV-DLR-COUNTRY-ISO3-C                          04852113
+090800                ,:NAV-REBILL-F                                    04852213
+090900                ,:NAV-UPDT-ID-C                                   04852313
+091000                , CURRENT TIMESTAMP                               04852413
+091100                , CURRENT TIMESTAMP - CURRENT TIMEZONE            04852513
+091101                )                                                 04852514
+091102     END-EXEC                                                     04852613
+091103                                                                  04852713
+091104     MOVE SQLCODE                           TO SC-DB2-SQLCODE     04852816
+091105                                                                  04852913
+091106     EVALUATE TRUE                                                04853013
+091107        WHEN SC-DB2-SQLCODE-OK                                    04853113
+091108            ADD +1                          TO PV-INS-UPD-REC-CNT 04853114
+091109        WHEN SC-DB2-SQLCODE-DUP-INSERT                            04853213
+091110            CONTINUE                                              04853214
+091111        WHEN OTHER                                                04853413
+091112            MOVE SPACES                     TO AUDIT-RECORD       04853516
+091113            STRING "VIN = " , NAV-VIN-C                           04853613
+091114            DELIMITED BY SIZE             INTO AUDIT-DATA         04853713
+091115            WRITE AUDIT-RECORD                                    04853813
+091116            MOVE SQLCODE                    TO DB2-ABEND-SQLCODE  04853913
+091117            MOVE "INSERT"                   TO DB2-ABEND-FUNCTION 04854013
+091118            MOVE " MEXW046_NAV_INV_VIN "    TO DB2-ABEND-TABLE    04854113
+091119            MOVE DB2-ABEND-MSG              TO ABEND-MSG          04854213
+091120            MOVE "4000P-INSERT-MEXW046"     TO ABEND-PARAGRAPH    04854315
+091121            PERFORM 9999I-ABEND                                   04854413
+091122     END-EVALUATE                                                 04854513
+091123     .                                                            04854613
+091124                                                                  04854713
+091125/*****************************************************************04854813
+091126* UPDATE MEXW046_NAV_INV_VIN                                     *04854913
+091127******************************************************************04855013
+091128 4100P-UPDATE-MEXW046.                                            04855115
+091129                                                                  04855116
+091130     EXEC SQL                                                     04855213
+091131         UPDATE MEXW046_NAV_INV_VIN                               04855313
+091132         SET NAV_DLR_VEH_X            = :NAV-DLR-VEH-X            04855413
+091133            ,NAV_INV_VL_C             = :NAV-INV-VL-C             04855513
+091134            ,NAV_EXT_CLR_N            = :NAV-EXT-CLR-N            04855613
+091135            ,NAV_INT_CLR_N            = :NAV-INT-CLR-N            04855713
+091136            ,NAV_BODY_C               = :NAV-BODY-C               04855813
+091137            ,NAV_PEP_C                = :NAV-PEP-C                04855913
+091138            ,NAV_MKT_MDL_YR_R         = :NAV-MKT-MDL-YR-R         04856013
+091139            ,NAV_SLD_TO_DLR_C         = :NAV-SLD-TO-DLR-C         04856113
+091140            ,NAV_PA_DLR_C             = :NAV-PA-DLR-C             04856213
+091141            ,NAV_FTC_DLR_C            = :NAV-FTC-DLR-C            04856313
+091142            ,NAV_INV_TYPE_C           = :NAV-INV-TYPE-C           04856413
+091143            ,NAV_PRICE_LVL_C          = :NAV-PRICE-LVL-C          04856513
+091144            ,NAV_BASE_VEH_A           = :NAV-BASE-VEH-A           04856613
+091145            ,NAV_BASE_DLR_PRICE_A     = :NAV-BASE-DLR-PRICE-A     04856713
+091146            ,NAV_BASE_UNIT_ADJ_MEMO_A = :NAV-BASE-UNIT-ADJ-MEMO-A 04856813
+091147            ,NAV_TOT_DLR_OPTS_A       = :NAV-TOT-DLR-OPTS-A       04856913
+091148            ,NAV_OPT_ADJ_MEMO_A       = :NAV-OPT-ADJ-MEMO-A       04857013
+091149            ,NAV_DEST_DELIV_CHG_A     = :NAV-DEST-DELIV-CHG-A     04857113
+091150            ,NAV_DLR_BONUS_DISC_1_X   = :NAV-DLR-BONUS-DISC-1-X   04857213
+091151            ,NAV_DLR_BONUS_DISC_1_A   = :NAV-DLR-BONUS-DISC-1-A   04857313
+091152            ,NAV_DLR_BONUS_DISC_2_X   = :NAV-DLR-BONUS-DISC-2-X   04857413
+091153            ,NAV_DLR_BONUS_DISC_2_A   = :NAV-DLR-BONUS-DISC-2-A   04857513
+091154            ,NAV_DLR_BONUS_DISC_3_X   = :NAV-DLR-BONUS-DISC-3-X   04857613
+091155            ,NAV_DLR_BONUS_DISC_3_A   = :NAV-DLR-BONUS-DISC-3-A   04857713
+091156            ,NAV_DLR_BONUS_DISC_4_X   = :NAV-DLR-BONUS-DISC-4-X   04857813
+091157            ,NAV_DLR_BONUS_DISC_4_A   = :NAV-DLR-BONUS-DISC-4-A   04857913
+091158            ,NAV_DLR_BONUS_DISC_5_X   = :NAV-DLR-BONUS-DISC-5-X   04858013
+091159            ,NAV_DLR_BONUS_DISC_5_A   = :NAV-DLR-BONUS-DISC-5-A   04858113
+091160            ,NAV_DLR_BONUS_DISC_6_X   = :NAV-DLR-BONUS-DISC-6-X   04858213
+091161            ,NAV_DLR_BONUS_DISC_6_A   = :NAV-DLR-BONUS-DISC-6-A   04858313
+091162            ,NAV_OPT_HOLDBACK_A       = :NAV-OPT-HOLDBACK-A       04858413
+091163            ,NAV_BASE_HOLDBACK_A      = :NAV-BASE-HOLDBACK-A      04858513
+091164            ,NAV_FDAF_ASSESS_A        = :NAV-FDAF-ASSESS-A        04858613
+091165            ,NAV_FIN_COST_A           = :NAV-FIN-COST-A           04858713
+091166            ,NAV_FUEL_CHG_A           = :NAV-FUEL-CHG-A           04858813
+091167            ,NAV_INV_TOT_A            = :NAV-INV-TOT-A            04858913
+091168            ,NAV_DLR_COUNTRY_ISO3_C   = :NAV-DLR-COUNTRY-ISO3-C   04859013
+091169            ,NAV_REBILL_F             = :NAV-REBILL-F             04859113
+091170            ,NAV_UPDT_ID_C            = :NAV-UPDT-ID-C            04859213
+091171            ,NAV_UPDT_S               =  CURRENT TIMESTAMP        04859313
+091172            ,NAV_GMT_S                =  CURRENT TIMESTAMP -      04859413
+091173                                         CURRENT TIMEZONE         04859513
+091174       WHERE NAV_VIN_C                = :NAV-VIN-C                04859613
+091175                                                                  04859614
+091176     END-EXEC                                                     04859713
+091177                                                                  04859714
+091178     MOVE SQLCODE TO SC-DB2-SQLCODE                               04859813
+091179                                                                  04859913
+091180     EVALUATE TRUE                                                04860013
+091190        WHEN SC-DB2-SQLCODE-OK                                    04860213
+091191            ADD +1                        TO PV-INS-UPD-REC-CNT   04860214
+091192        WHEN NOT SC-DB2-SQLCODE-OK                                04860513
+091193            MOVE SPACES                   TO AUDIT-RECORD         04860613
+091194            STRING "VIN = " , NAV-VIN-C                           04860713
+091195            DELIMITED BY SIZE           INTO AUDIT-DATA           04860813
+091196            WRITE AUDIT-RECORD                                    04860913
+091197            MOVE SQLCODE                  TO DB2-ABEND-SQLCODE    04861013
+091198            MOVE "UPDATE"                 TO DB2-ABEND-FUNCTION   04861113
+091199            MOVE "MEXW046_NAO_REBILL_VIN" TO DB2-ABEND-TABLE      04861213
+091200            MOVE DB2-ABEND-MSG            TO ABEND-MSG            04861313
+091201            MOVE "4100P-UPDATE-MEXW046"   TO ABEND-PARAGRAPH      04861415
+091202            PERFORM 9999I-ABEND                                   04861513
+091203     END-EVALUATE                                                 04861713
+091204     .                                                            04861813
+091205                                                                  04861914
+091206/*****************************************************************04862011
+091207* INSERT MEXW047                                                 *04862111
+091208******************************************************************04862211
+091209 4200P-INSERT-MEXW047.                                            04862315
+091210                                                                  04862316
+091211     EXEC SQL                                                     04862411
+091212         INSERT INTO MEXW047_NAO_INV_OPT                          04862511
+091213                ( NAV_VIN_C                                       04862611
+091214                 ,NAO_SEQ_R                                       04862711
+091215                 ,NAO_OPTION_C                                    04862811
+091216                 ,NAO_OPTION_N                                    04862911
+091217                 ,NAO_OPTION_PRICE_A                              04863011
+091218                 ,NAO_SUB_HEADING_N                               04863111
+091219                 ,NAO_UPDT_ID_C                                   04863211
+091220                 ,NAO_UPDT_S                                      04863212
+091230                 ,NAO_GMT_S                                       04863311
+091231                 )                                                04863312
+091232          VALUES(:NAO-VIN-C                                       04863411
+091233                ,:NAO-SEQ-R                                       04863511
+091234                ,:NAO-OPTION-C                                    04863611
+091235                ,:NAO-OPTION-N                                    04863711
+091236                ,:NAO-OPTION-PRICE-A                              04863811
+091237                ,:NAO-SUB-HEADING-N                               04863911
+091238                ,:NAO-UPDT-ID-C                                   04864011
+091239                , CURRENT TIMESTAMP                               04864111
+091240                , CURRENT TIMESTAMP - CURRENT TIMEZONE            04864211
+091241                )                                                 04864212
+091242        END-EXEC                                                  04864311
+091243                                                                  04864411
+091244     MOVE SQLCODE                          TO SC-DB2-SQLCODE      04864516
+091245                                                                  04864611
+091246     EVALUATE TRUE                                                04864711
+091247        WHEN SC-DB2-SQLCODE-OK                                    04864811
+091248             CONTINUE                                             04864911
+091249        WHEN OTHER                                                04865011
+091250             MOVE SPACES                   TO AUDIT-RECORD        04865111
+091251             STRING "VIN = " , NAV-VIN-C ", " ,                   04865211
+091252                    "OPT CD = " , NAO-OPTION-C                    04865311
+091253            DELIMITED BY SIZE            INTO AUDIT-DATA          04865411
+091254            WRITE AUDIT-RECORD                                    04865511
+091255            MOVE SQLCODE                   TO DB2-ABEND-SQLCODE   04865611
+091256            MOVE "INSERT"                  TO DB2-ABEND-FUNCTION  04865711
+091257            MOVE " MEXW047_NAO_INV_OPT "   TO DB2-ABEND-TABLE     04865811
+091258            MOVE DB2-ABEND-MSG             TO ABEND-MSG           04865911
+091259            MOVE "4200P-INSERT-MEXW047"    TO ABEND-PARAGRAPH     04866015
+091260            PERFORM 9999I-ABEND                                   04866111
+091261     END-EVALUATE                                                 04866211
+091262     .                                                            04866311
+091263                                                                  04866411
+091264/*****************************************************************04866511
+091265* DELETE MEXW047                                                 *04866611
+091266******************************************************************04866711
+091267 4300P-DELETE-MEXW047.                                            04866815
+091268                                                                  04866816
+091269     EXEC SQL                                                     04866911
+091270         DELETE FROM MEXW047_NAO_INV_OPT                          04867011
+091271         WHERE NAV_VIN_C = :NAO-VIN-C                             04867111
+091272     END-EXEC                                                     04867211
+091273                                                                  04867311
+091274     MOVE SQLCODE TO SC-DB2-SQLCODE                               04867411
+091275                                                                  04867511
+091276     EVALUATE TRUE                                                04867611
+091277         WHEN SC-DB2-SQLCODE-OK                                   04867711
+091278         WHEN SC-DB2-SQLCODE-NOT-FOUND                            04867811
+091279              CONTINUE                                            04867911
+091280                                                                  04868011
+091281         WHEN NOT SC-DB2-SQLCODE-OK                               04868111
+091282             MOVE SPACES                   TO AUDIT-RECORD        04868211
+091283             STRING "VIN = " , NAO-VIN-C                          04868311
+091284             DELIMITED BY SIZE           INTO AUDIT-DATA          04868511
+091285             WRITE AUDIT-RECORD                                   04868611
+091286             MOVE SQLCODE                  TO DB2-ABEND-SQLCODE   04868711
+091287             MOVE "DELETE"                 TO DB2-ABEND-FUNCTION  04868811
+091288             MOVE "MEXW047_NAO_INV_OPT"    TO DB2-ABEND-TABLE     04868911
+091289             MOVE DB2-ABEND-MSG            TO ABEND-MSG           04869011
+091290             MOVE "4300P-DELETE-MEXW047"   TO ABEND-PARAGRAPH     04869115
+091291             PERFORM 9999I-ABEND                                  04869211
+091292     END-EVALUATE                                                 04869311
+091293     .                                                            04869414
+091294                                                                  04869511
+091295/*****************************************************************05720000
+091296* GET NEXT GSAM INPUT-RECORD.                                    *05730000
+091297******************************************************************05740000
+091298 5000P-GET-NEXT-INPUT-RECORD.                                     05750013
+091299                                                                  05750014
+091300     CALL "CBLTDLI" USING SL-FUNC-GN                              05770000
+091301                          INVDATA-IN-PCB                          05780000
+091302                          INVOICE-DATA-RECORD                     05790100
+091303                                                                  05800000
+091304     MOVE INVDATA-IN-PCB-STATUS          TO SC-IMS-STAT           05810000
+091305                                                                  05820000
+091306     EVALUATE TRUE                                                05830000
+091307        WHEN SC-IMS-STAT-OK                                       05840000
+091308           MOVE INVOICE-DATA-RECORD      TO INVDATA-RECORD        05850100
+091309           ADD +1                        TO PV-COUNT-BATCH        05860000
+091310        WHEN SC-IMS-STAT-END-OF-DB                                05870000
+091311           SET INPUT-EOF                 TO TRUE                  05880000
+091312        WHEN OTHER                                                05890000
+091313           MOVE INVDATA-IN-PCB-STATUS    TO IMS-ABEND-STATUS      05900000
+091314           MOVE SL-FUNC-GN               TO IMS-ABEND-FUNCTION    05910000
+091315           MOVE INVDATA-IN-PCB-NAME      TO IMS-ABEND-PCB-NAME    05920000
+091316           MOVE IMS-ABEND-MSG            TO ABEND-MSG             05930000
+091317           MOVE "5000P"                  TO ABEND-PARAGRAPH       05940013
+091318           PERFORM 9999I-ABEND                                    05950000
+091319     END-EVALUATE                                                 05960000
+091320     .                                                            05970000
+091330                                                                  05980000
+285450/*****************************************************************06530100
+285460* INSERT ERROR RECORD TO GSAM                                    *06530200
+285470******************************************************************06530300
+285480 7000P-WRITE-ERROR-RECORD.                                        06530400
+285490                                                                  06530500
+285500     CALL "CBLTDLI" USING SL-FUNC-ISRT                            06530600
+285510                          ERROR-PCB                               06530700
+285520                          ERROR-RECORD                            06530800
+285530                                                                  06530900
+285540     MOVE ERROR-PCB-STATUS      TO SC-IMS-STAT                    06531000
+285550                                                                  06531100
+285560     IF  SC-IMS-STAT-OK                                           06531200
+285570         MOVE SPACES            TO ERROR-RECORD                   06531300
+285580     ELSE                                                         06531400
+285590         MOVE ERROR-PCB-STATUS  TO IMS-ABEND-STATUS               06531500
+285600         MOVE SL-FUNC-ISRT      TO IMS-ABEND-FUNCTION             06531600
+285610         MOVE ERROR-PCB-NAME    TO IMS-ABEND-PCB-NAME             06531700
+285620         MOVE IMS-ABEND-MSG     TO ABEND-MSG                      06531800
+285630         MOVE "7000P"           TO ABEND-PARAGRAPH                06531900
+285640         PERFORM 9999I-ABEND                                      06532000
+285650     END-IF                                                       06532100
+285660     .                                                            06532200
+285661                                                                  06532300
+285662/*****************************************************************06540000
+285663* WRITE AUDIT DETAIL LINES                                       *06550000
+285664******************************************************************06560000
+285665 8000P-WRITE-AUDIT-DETAIL.                                        06570000
+285666                                                                  06570100
+285667     MOVE SPACES                         TO AUDIT-RECORD          06590000
+285668     WRITE AUDIT-RECORD                                           06600000
+285669                                                                  06610000
+285670     MOVE "OUTPUT BATCH NUMBER        :" TO AUDIT-LABEL           06620000
+285671     MOVE PV-EXWWB915-CURR-BATCH-NO      TO AUDIT-DATA            06630000
+285672     WRITE AUDIT-RECORD                                           06640000
+285673     .                                                            06690000
+285674                                                                  06700000
+285675 COPY CPESEBCR.                                                   06710000
+285676*- BMPSHELL CALLED ROUTINES                                       06710100

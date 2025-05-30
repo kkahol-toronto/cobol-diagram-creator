@@ -1,0 +1,140 @@
+<html>
+    <head><style>#mynetwork{overflow:auto;}</style>
+        <meta charset="utf-8">
+        
+            <script src="lib/bindings/utils.js"></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 100%;
+                 height: 1200px;
+                 background-color: #ffffff;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+
+             
+        </style>
+    </head>
+
+
+    <body><div id='legend' style='font:14px sans-serif;margin:8px;'><b>Legend</b><br><span style='display:inline-flex;align-items:center;margin:4px 10px 4px 0'><span style='display:inline-block;width:16px;height:16px;background:#f9f;border:1px solid #333;margin-right:6px'></span>Process</span><span style='display:inline-flex;align-items:center;margin:4px 10px 4px 0'><span style='display:inline-block;width:16px;height:16px;background:#bbf;border:1px solid #333;margin-right:6px'></span>Decision</span><span style='display:inline-flex;align-items:center;margin:4px 10px 4px 0'><span style='display:inline-block;width:16px;height:16px;background:#fbb;border:1px solid #333;margin-right:6px'></span>Error</span><span style='display:inline-flex;align-items:center;margin:4px 10px 4px 0'><span style='display:inline-block;width:16px;height:16px;background:#bfb;border:1px solid #333;margin-right:6px'></span>Start / End</span></div>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"color": "#f9f", "hidden": true, "id": "ProcessVehicle", "label": "ProcessVehicle", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "GetRetailData", "label": "GetRetailData", "shape": "box"}, {"color": "#f9f", "hidden": false, "id": "Init", "label": "Init", "shape": "box"}, {"color": "#bbf", "hidden": true, "id": "MoreMEXW001", "label": "MoreMEXW001", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "GetWholesaleData", "label": "GetWholesaleData", "shape": "box"}, {"color": "#fbb", "hidden": true, "id": "CoreDump", "label": "CoreDump", "shape": "box"}, {"color": "#f9f", "hidden": true, "id": "MainLoop", "label": "MainLoop", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "GetDealerData", "label": "GetDealerData", "shape": "box"}, {"color": "#fbb", "hidden": true, "id": "Rollback", "label": "Rollback", "shape": "box"}, {"color": "#f9f", "hidden": true, "id": "Conclusion", "label": "Conclusion", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "GetWERS", "label": "GetWERS", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "UpdateBatch", "label": "UpdateBatch", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "SetReturnCode", "label": "SetReturnCode", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "GetWERSDetails", "label": "GetWERSDetails", "shape": "box"}, {"color": "#bbf", "hidden": true, "id": "ProcessProducer", "label": "ProcessProducer", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "WriteTrailers", "label": "WriteTrailers", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "FetchMEXW001", "label": "FetchMEXW001", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "OpenMEXW001", "label": "OpenMEXW001", "shape": "box"}, {"color": "#bbf", "hidden": true, "id": "Checkpoint", "label": "Checkpoint", "shape": "box"}, {"color": "#f9f", "hidden": true, "id": "InitPhase", "label": "InitPhase", "shape": "box"}, {"color": "#fbb", "hidden": true, "id": "WriteAbendMsg", "label": "WriteAbendMsg", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "WriteRecord", "label": "WriteRecord", "shape": "box"}, {"color": "#fbb", "hidden": false, "id": "Abend", "label": "Abend", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "WriteAudit", "label": "WriteAudit", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "UpdateTimestamp", "label": "UpdateTimestamp", "shape": "box"}, {"color": "#E6D6FF", "hidden": true, "id": "GetStatusDates", "label": "GetStatusDates", "shape": "box"}, {"color": "#bfb", "hidden": true, "id": "End", "label": "End", "shape": "box"}]);
+                  edges = new vis.DataSet([{"arrows": "to", "from": "Init", "hidden": true, "to": "InitPhase"}, {"arrows": "to", "from": "InitPhase", "hidden": true, "to": "MainLoop"}, {"arrows": "to", "from": "MainLoop", "hidden": true, "to": "ProcessProducer"}, {"arrows": "to", "from": "ProcessProducer", "hidden": true, "to": "OpenMEXW001"}, {"arrows": "to", "from": "OpenMEXW001", "hidden": true, "to": "FetchMEXW001"}, {"arrows": "to", "from": "FetchMEXW001", "hidden": true, "to": "ProcessVehicle"}, {"arrows": "to", "from": "ProcessVehicle", "hidden": true, "to": "MoreMEXW001"}, {"arrows": "to", "from": "ProcessVehicle", "hidden": true, "to": "GetWERS"}, {"arrows": "to", "from": "GetWERS", "hidden": true, "to": "GetDealerData"}, {"arrows": "to", "from": "GetDealerData", "hidden": true, "to": "GetRetailData"}, {"arrows": "to", "from": "GetRetailData", "hidden": true, "to": "GetWholesaleData"}, {"arrows": "to", "from": "GetWholesaleData", "hidden": true, "to": "GetWERSDetails"}, {"arrows": "to", "from": "GetWERSDetails", "hidden": true, "to": "GetStatusDates"}, {"arrows": "to", "from": "GetStatusDates", "hidden": true, "to": "WriteRecord"}, {"arrows": "to", "from": "WriteRecord", "hidden": true, "to": "Checkpoint"}, {"arrows": "to", "from": "MainLoop", "hidden": true, "to": "Conclusion"}, {"arrows": "to", "from": "Conclusion", "hidden": true, "to": "UpdateTimestamp"}, {"arrows": "to", "from": "UpdateTimestamp", "hidden": true, "to": "UpdateBatch"}, {"arrows": "to", "from": "UpdateBatch", "hidden": true, "to": "WriteTrailers"}, {"arrows": "to", "from": "WriteTrailers", "hidden": true, "to": "WriteAudit"}, {"arrows": "to", "from": "WriteAudit", "hidden": true, "to": "SetReturnCode"}, {"arrows": "to", "from": "SetReturnCode", "hidden": true, "to": "End"}, {"arrows": "to", "from": "Abend", "hidden": true, "to": "WriteAbendMsg"}, {"arrows": "to", "from": "WriteAbendMsg", "hidden": true, "to": "Rollback"}, {"arrows": "to", "from": "Rollback", "hidden": true, "to": "CoreDump"}, {"arrows": "to", "from": "CoreDump", "hidden": true, "to": "End"}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {"layout": {"hierarchical": {"enabled": true, "direction": "UD", "nodeSpacing": 170, "levelSeparation": 140}}, "physics": {"hierarchicalRepulsion": {"nodeDistance": 160}}, "edges": {"arrows": "to", "smooth": {"type": "cubicBezier", "forceDirection": "vertical"}}};
+
+                  
+
+
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    </body>
+</html>
+        <script>
+          const adjacency = {"Init": ["InitPhase"], "InitPhase": ["MainLoop"], "MainLoop": ["ProcessProducer", "Conclusion"], "ProcessProducer": ["OpenMEXW001"], "OpenMEXW001": ["FetchMEXW001"], "FetchMEXW001": ["ProcessVehicle"], "ProcessVehicle": ["MoreMEXW001", "GetWERS"], "GetWERS": ["GetDealerData"], "GetDealerData": ["GetRetailData"], "GetRetailData": ["GetWholesaleData"], "GetWholesaleData": ["GetWERSDetails"], "GetWERSDetails": ["GetStatusDates"], "GetStatusDates": ["WriteRecord"], "WriteRecord": ["Checkpoint"], "Conclusion": ["UpdateTimestamp"], "UpdateTimestamp": ["UpdateBatch"], "UpdateBatch": ["WriteTrailers"], "WriteTrailers": ["WriteAudit"], "WriteAudit": ["SetReturnCode"], "SetReturnCode": ["End"], "Abend": ["WriteAbendMsg"], "WriteAbendMsg": ["Rollback"], "Rollback": ["CoreDump"], "CoreDump": ["End"]};
+          const shown = new Set(["Abend", "Init"]);
+          network.on("click", p => {
+             if(p.nodes.length!==1) return;
+             const n = p.nodes[0], kids = adjacency[n] || [];
+             const show = kids.length && nodes.get(kids[0]).hidden;
+             kids.forEach(c=>{
+                 nodes.update({id:c,hidden:!show});
+                 edges.update({from:n,to:c,hidden:!show});
+             });
+          });
+        </script>

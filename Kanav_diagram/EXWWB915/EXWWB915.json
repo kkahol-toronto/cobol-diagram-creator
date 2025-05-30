@@ -1,0 +1,1354 @@
+{
+    "formatted_input": "       IDENTIFICATION DIVISION.\n       PROGRAM-ID.     EXWWB915.\n       AUTHOR.         DAWN MAHN.\n       DATE-WRITTEN.   OCTOBER 2012.\n       DATE-COMPILED.\n      *  PROGRAM DESCRIPTION: THIS PROGRAM READS IN THE INVDATA BANK   *\n      *  FILE FROM INVOICING, EXTRACTS REBILL RECORDS AND INSERTS THE  *\n      *  DATA INTO THE GEVIS DATABASE.                                 *\n      *  INPUT FILE  : FDIP.INV.INVDATAX.GEVIS(0)                      *\n      *  TABLES      : MEXW046_NAV_INV_VIN                             *\n      *                MEXW047_NAO_INV_OPT                             *\n      *                       REVISION LOG                             *\n      * DATE    : 10/00/2012  PROGRAMMER: DAWN MAHN                    *\n      * ETRACKER: 11300010                                             *\n      * REASON  : ORIGINAL PROGRAM CREATION.                           *\n      * DATE    : 05/07/2020  PROGRAMMER: CANDACE BOERNER              *\n      * RALLY   : F259434/US1597336                                    *\n      * REASON  : VI&D FILE LAYOUT CHANGE.  MODIFIED COPYBOOK CPEWIIDR.*\n      * REASON  : CHANGE IDR-RAPID-SPEC-GRP OCCURS FROM 35 TO 31.      *\n      *           ADD FILLER (44 SPACES) AFTER FIELD IDR-RAPID-MSRP    *\n       ENVIRONMENT DIVISION.\n       INPUT-OUTPUT SECTION.\n       FILE-CONTROL.\n           SELECT AUDIT-FILE           ASSIGN TO AUDIT.\n           SELECT INVEHLN-FILE         ASSIGN TO INVEHLN.\n           SELECT INCNTRY-FILE         ASSIGN TO INCNTRY.\n       DATA DIVISION.\n       FILE SECTION.\n       FD  AUDIT-FILE.\n       01  AUDIT-RECORD.\n           05  AUDIT-LABEL             PIC X(30).\n           05  AUDIT-DATA              PIC X(50).\n       FD  INVEHLN-FILE.\n       01  INVEHLN-REC                 PIC X(80).\n       FD  INCNTRY-FILE.\n       01  INCNTRY-REC                 PIC X(80).\n      /*****************************************************************\n      *                 W O R K I N G   S T O R A G E                  *\n       WORKING-STORAGE SECTION.\n       77  PAN-VALET PICTURE X(24) VALUE \"002PEXWWB915 10/30/12\".\n       COPY CPESDB2.\n      *- SQLCA AND SQLCODES\n       COPY CPESIMSB.\n      *- IMS FUNCTIONS AND STATUS CODES\n       COPY CPESGNTB.\n      *- GENERIC TABLE LAYOUTS - SYSTEM\n       COPY CPEWGNTB.\n      *- GENERIC TABLE LAYOUTS - GEVIS\n       COPY CPESEBWS.\n      *- BMPSHELL WORKING STORAGE\n      *COPY CPESSDTE.\n      *- SUBROUTINE WS - EXSESDTE\n      *COPY CPESSMSG.\n      *- SUBROUTINE WS - EXSESMSG\n       COPY CPESD016.\n      *- DCLGEN - MEXS016_GENERIC2\n       COPY CPEWD046.\n      *- DCLGEN - MEXW046_NAV_INV_VIN\n       COPY CPEWD047.\n      *- DCLGEN - MEXW047_NAO_INV_OPT\n      /*****************************************************************\n      * RECORD DESCRIPTIONS FOR GSAM FILES                             *\n      * INPUT INTERFACE TRANSACTIONS\n       COPY CPEWIIDR.\n       01  CHKP-SAVE-AREA.\n           05  CHKP-SAVE                     PIC  X(1000).\n      /*****************************************************************\n      * INTERNAL TABLES FOR VEHICLE LINE AND COUNTRY                   *\n       01  WS-INCLUDED-VEHICLE-LINES.\n           05  V-VL-TBL-ID                   PIC X(08) VALUE \"VEH LINE\".\n           05  INCL-VEH-LN-TBLE              OCCURS 20.\n               10  INCL-VEH-LN-DATA          PIC X(02)  VALUE SPACES.\n           05  WS-INVEHLN-ROW-MAX            PIC S9(4)  COMP VALUE +20.\n           05  INVEHLN-X                     PIC S9(4)  COMP.\n       01  WS-INVOICE-VL.\n           05  INV-VL-CD                     PIC X(02).\n           05  FILLER                        PIC X(78)  VALUE SPACES.\n       01  WS-INCLUDED-COUNTRY.\n           05  V-CNTRY-TBL-ID                PIC X(08) VALUE \"COUNTRY \".\n           05  INCL-CNTRY-TBLE               OCCURS 20.\n               10  INCL-DLR-CNTRY-CD         PIC X(01)  VALUE SPACES.\n               10  INCL-CNTRY-CD             PIC X(03)  VALUE SPACES.\n           05  WS-INCNTRY-ROW-MAX            PIC S9(4)  COMP VALUE +20.\n           05  INCNTRY-X                     PIC S9(4)  COMP.\n       01  WS-SOLD-TO-DLR-CTRY.\n           05  SLD-TO-DLR-CTRY-CD            PIC X(01).\n           05  FILLER                        PIC X(01)  VALUE SPACES.\n           05  SLD-TO-DLR-ISO-CTRY-CD        PIC X(03).\n           05  FILLER                        PIC X(01)  VALUE SPACES.\n       01  ERROR-RECORD.\n           05  ERROR-VIN                     PIC X(17) VALUE SPACES.\n           05  FILLER                        PIC X(01) VALUE SPACES.\n           05  ERROR-MESSAGE.\n               10  ERROR-MESSAGE-1           PIC X(50) VALUE SPACES.\n               10  ERROR-MESSAGE-2           PIC X(38) VALUE SPACES.\n           05  ERROR-VALUE                   PIC X(34) VALUE SPACES.\n           05  ERROR-HEADER-DATA             REDEFINES ERROR-VALUE.\n               10  ERROR-FILE-TYPE           PIC X(01).\n               10  ERROR-DATA-SRC            PIC X(02).\n               10  ERROR-BATCH-DT            PIC X(10).\n               10  FILLER                    PIC X(21).\n           05  ERROR-SORT-FIELDS.\n               10  ERROR-PROD-SYS           PIC X(02) VALUE SPACES.\n               10  ERROR-BATCH-NBR          PIC 9(05) VALUE ZEROES.\n               10  ERROR-SORT-BYTE          PIC X(01) VALUE SPACES.\n           05  ERROR-PROD-SRC               PIC X(02) VALUE SPACES.\n           05  ERROR-FILLER                 PIC X(35) VALUE SPACES.\n      /*****************************************************************\n      * PROGRAM LITERALS                                               *\n       01  PROGRAM-LITERALS.\n           05  PL-PGM-NAME             PIC X(08) VALUE \"EXWWB915\".\n           05  PL-SYSTEM-CD            PIC X(04) VALUE \"EXWW\".\n           05  PL-TABLE-ID             PIC X(07) VALUE \"MODELYR\".\n           05  PL-BATCHCTL             PIC X(08) VALUE \"INVDATA \".\n           05  PL-F                    PIC X(01) VALUE \"F\".\n           05  PL-C                    PIC X(01) VALUE \"C\".\n           05  PL-Y                    PIC X(01) VALUE \"Y\".\n           05  PL-FOUR-ZEROS           PIC X(04) VALUE \"0000\".\n           05  PL-0410P                PIC X(05) VALUE \"0410P\".\n           05  PL-OPT                  PIC X(03) VALUE \"OPT\".\n           05  PL-EXTERIOR             PIC X(10) VALUE \". EXTERIOR\".\n           05  PL-EXTERIOR-2           PIC X(08) VALUE \"EXTERIOR\".\n           05  PL-INTERIOR             PIC X(10) VALUE \". INTERIOR\".\n           05  PL-INTERIOR-2           PIC X(08) VALUE \"INTERIOR\".\n           05  PL-FUNCTIONAL           PIC X(12) VALUE \". FUNCTIONAL\".\n           05  PL-FUNCTIONAL-2         PIC X(10) VALUE \"FUNCTIONAL\".\n           05  PL-SAFETY               PIC X(17) VALUE\n                                                 \". SAFETY/SECURITY\".\n           05  PL-SAFETY-2             PIC X(15) VALUE\n                                                 \"SAFETY/SECURITY\".\n           05  PL-WARRANTY             PIC X(10) VALUE \". WARRANTY\".\n           05  PL-RAPID-SPEC-HEADER    PIC X(17) VALUE\n                                                 \"RAPID SPEC HEADER\".\n           05  PL-CHAR-ALPHABETIC-UPPER    PIC X(26)\n               VALUE \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\".\n           05  PL-CHAR-ALPHABETIC-LOWER    PIC X(26)\n               VALUE \"abcdefghijklmnopqrstuvwxyz\".\n      /*****************************************************************\n      * PROGRAM MESSAGES                                               *\n       01  PROGRAM-MESSAGES.\n           05  MSG-HEADER-BAD                           PIC X(50) VALUE\n               \"HEADER FOUND WHEN TRAILER EXPECTED                \".\n           05  MSG-HEADER-NONE                          PIC X(50) VALUE\n               \"FIRST RECORD IS NOT HEADER                        \".\n           05  MSG-TRAILER-BAD                          PIC X(50) VALUE\n               \"TRAILER DATA DOES NOT MATCH HEADER DATA           \".\n           05  MSG-TRAILER-MISSING                      PIC X(50) VALUE\n               \"TRAILER RECORD IS MISSING                         \".\n           05  MSG-TRAILER-NONE                         PIC X(50) VALUE\n               \"LAST RECORD IS NOT TRAILER                        \".\n           05  MSG-HDR-PROD-SYS-2                       PIC X(50) VALUE\n               \"HEADER PROD SYSTEM IS NOT IN SYSPARM TABLE        \".\n           05  MSG-HDR-BATCH-DT-1                       PIC X(50) VALUE\n               \"HEADER BATCH DATE IS NOT VALID                    \".\n           05  MSG-HDR-BATCH-NBR-1                      PIC X(50) VALUE\n               \"HEADER BATCH NUMBER IS NOT NUMERIC                \".\n           05  MSG-HDR-BATCH-NBR-2                      PIC X(50) VALUE\n               \"HEADER BATCH NUMBER DOES NOT MATCH SYSPARM        \".\n           05  MSG-TRL-NBR-RECS                         PIC X(50) VALUE\n               \"TRAILER RECORD COUNT DOESN'T MATCH BATCH COUNT    \".\n           05  MSG-TRL-NBR-RECS-2                       PIC X(50) VALUE\n               \"TRAILER RECORD COUNT DOESN'T MATCH ADD/UPD COUNT  \".\n           05  MSG-TBL-CNT                              PIC X(50) VALUE\n               \"TABLE COUNT > MAX ALLOWED                         \".\n           05  MSG-VIN-SPACES-OR-HIGH-VALUES            PIC X(50) VALUE\n               \"VIN IS SPACES OR HIGH VALUES                      \".\n           05  MSG-VIN-CONTAINS-SPACES                  PIC X(50) VALUE\n               \"VIN CONTAINS SPACES                               \".\n           05  MSG-VIN-CONTAINS-SPEC-CHARS              PIC X(50) VALUE\n               \"VIN CONTAINS SPECIAL CHARACTERS                   \".\n           05  MSG-MKT-MDL-YR-NOT-FOUND                 PIC X(50) VALUE\n               \"MARKET MODEL YEAR NOT FOUND ON MEXS016            \".\n           05  MSG-MEXS016-SYSPARM                      PIC X(50) VALUE\n               \"MISSING MEXS016 SYSPARM REC                       \".\n           05  MSG-INPUT-FILE-IS-EMPTY                  PIC X(50) VALUE\n               \"INPUT FILE IS EMPTY                               \".\n           05  MSG-VEH-LINE-NOT-FOUND                   PIC X(50) VALUE\n               \"VEHICLE LINE NOT FOUND                            \".\n           05  MSG-COUNTRY-NOT-FOUND                    PIC X(50) VALUE\n               \"COUNTRY CODE NOT FOUND                            \".\n           05  MSG-DIV-NOT-FOUND                        PIC X(50) VALUE\n               \"DIVISION NOT FOUND                                \".\n      /*****************************************************************\n      * PROGRAM SWITCHES                                               *\n       01  PROGRAM-SWITCHES.\n           05  PS-INPUT-EOF-SW             PIC X(01).\n               88 INPUT-EOF                VALUE \"Y\".\n           05  PS-HEADER-TRAILER           PIC X(01).\n               88 HEADER-NEEDED            VALUE \"H\".\n               88 TRAILER-NEEDED           VALUE \"T\".\n           05  PS-VEHLN-SW                 PIC X(01).\n               88 VEHLN-FOUND              VALUE \"Y\".\n           05  PS-ERROR-SW                 PIC X(01).\n               88 ERROR-FOUND              VALUE \"Y\".\n               88 ERROR-NOT-FOUND          VALUE \"N\".\n           05  PS-SEND-EMAIL               PIC X(01).\n               88 SEND-EMAIL               VALUE \"Y\".\n               88 NOT-SEND-EMAIL           VALUE \"N\".\n           05  PS-INVEHLN-EOF-SW           PIC X(01).\n               88 INVEHLN-EOF              VALUE \"Y\".\n           05  PS-INCNTRY-EOF-SW           PIC X(01).\n               88 INCNTRY-EOF              VALUE \"Y\".\n      /*****************************************************************\n      * PROGRAM VARIABLES                                              *\n       01  PROGRAM-VARIABLES.\n           05  PV-INPUT-REC-CNT              PIC S9(6) COMP VALUE +0.\n           05  PV-INS-UPD-REC-CNT            PIC S9(6) COMP VALUE +0.\n           05  PV-BYPASS-REC-CNT             PIC S9(6) COMP VALUE +0.\n           05  PV-CURR-DATE.\n               10  PV-CURR-DT-CC             PIC X(02).\n               10  PV-CURR-DT-YY             PIC X(02).\n               10  FILLER                    PIC X(01) VALUE \"-\".\n               10  PV-CURR-DT-MM             PIC X(02).\n               10  FILLER                    PIC X(01) VALUE \"-\".\n               10  PV-CURR-DT-DD             PIC X(02).\n           05  PV-COMP-DATE.\n               10  PV-COMP-DT-CC             PIC X(02).\n               10  PV-COMP-DT-YY             PIC X(02).\n               10  FILLER                    PIC X(01) VALUE \"-\".\n               10  PV-COMP-DT-MM             PIC X(02) VALUE \"01\".\n               10  FILLER                    PIC X(01) VALUE \"-\".\n               10  PV-COMP-DT-DD             PIC X(02) VALUE \"01\".\n           05  PV-INVDATA-CNTL-CUR-BATCH     PIC X(05) VALUE SPACES.\n           05  PV-INVDATA-CNTL-CUR-BATCH-NUM REDEFINES\n                  PV-INVDATA-CNTL-CUR-BATCH  PIC 9(05).\n           05  PV-HDR-BATCH-NBR              PIC 9(05).\n           05  PV-BATCH-NBR                  PIC 9(05).\n           05  PV-BATCH-DT                   PIC X(10).\n           05  PV-COUNT-BATCH                PIC S9(9) COMP.\n           05  PV-ERROR-BATCH                PIC 9(05).\n           05  PV-ATTRIBUTE-DATA             PIC 9(05).\n           05  PV-VIN-SPACE-COUNT            PIC S9(04) USAGE COMP.\n           05  PV-VIN-SP-CHAR-COUNT          PIC S9(04) USAGE COMP.\n           05  PV-VIN-SUB                    PIC 9(02)  USAGE COMP.\n           05  PV-17-CHAR-VIN                PIC X(17)  VALUE SPACES.\n           05  PV-VIN-CHAR-POSITION REDEFINES PV-17-CHAR-VIN\n               OCCURS 17 TIMES               PIC X(01).\n           05  PV-EXWWB915-SYSPARM-BATCHCTL.\n               10  PV-EXWWB915-CURR-BATCH-NO PIC 9(05).\n           05  PV-MODEL-YEAR.\n               10  PV-MDL-YR                 PIC X(50)  VALUE SPACES.\n           05  PV-INT-MODEL-YEAR    REDEFINES PV-MODEL-YEAR.\n               10  PV-INT-MDL-YR             PIC 9(04).\n               10  FILLER                    PIC X(46).\n       01  INVDATA.\n           05  INVDATA-RECORD                PIC X(10000) VALUE SPACES.\n           05  INVDATA-HEADER-INV REDEFINES INVDATA-RECORD.\n               10  FILLER                     PIC X(17).\n               10  INVDATA-HD-HEADER-INV      PIC X(03).\n                   88  INV-HEADER-RECORD      VALUE \"HDR\".\n               10  INVDATA-HDR-ID             PIC X(08).\n               10  INVDATA-HDR-CURR-BATCH     PIC 9(05).\n               10  INVDATA-HDR-PREV-BATCH     PIC 9(05).\n               10  INVDATA-HDR-CURR-DATE      PIC X(06).\n               10  INVDATA-HDR-PREV-DATE      PIC X(06).\n               10  FILLER                     PIC X(9950).\n           05  INVDATA-TRAILER-INV REDEFINES INVDATA-RECORD.\n               10  FILLER                     PIC X(17).\n               10  INVDATA-TL-TRAILER-INV     PIC X(03).\n                   88  INV-TRAILER-RECORD     VALUE \"TRL\".\n               10  INVDATA-TLR-ID             PIC X(08).\n               10  INVDATA-TLR-CURR-BATCH     PIC 9(05).\n               10  FILLER                     PIC X(05).\n               10  INVDATA-TLR-CNT            PIC 9(08).\n               10  FILLER                     PIC X(9954).\n      /*****************************************************************\n      *                 L I N K A G E   S E C T I O N                  *\n       LINKAGE SECTION.\n       01  IO-PCB.\n           05  IO-PCB-LTERM                   PIC X(08).\n           05  FILLER                         PIC X(02).\n           05  IO-PCB-STATUS                  PIC X(02).\n           05  FILLER                         PIC X(28).\n       01  INVDATA-IN-PCB.\n           05  INVDATA-IN-PCB-NAME            PIC X(08)\n                                              VALUE \"MDEXG100\".\n           05  FILLER                         PIC X(02).\n           05  INVDATA-IN-PCB-STATUS          PIC X(02).\n           05  FILLER                         PIC X(28).\n       01  ERROR-PCB.\n           05  ERROR-PCB-NAME                 PIC X(08)\n                                              VALUE \"MDEXG101\".\n           05  FILLER                         PIC X(02).\n           05  ERROR-PCB-STATUS               PIC X(02).\n           05  FILLER                         PIC X(28).\n      /*****************************************************************\n      *              P R O C E D U R E   D I V I S I O N               *\n       PROCEDURE DIVISION.\n      *                        M A I N L I N E                         *\n       0000P-MAINLINE.\n           ENTRY \"DLITCBL\" USING IO-PCB\n                                 INVDATA-IN-PCB\n                                 ERROR-PCB\n           PERFORM 0100I-INITIALIZATION\n           PERFORM 0500P-LOAD-INVEHLN\n           PERFORM 0550P-LOAD-INCNTRY\n           PERFORM 1000P-PROCESS-TRANSACTION UNTIL INPUT-EOF\n           PERFORM 0200I-CONCLUSION\n           IF SEND-EMAIL\n              MOVE +3 TO RETURN-CODE\n           END-IF\n           GOBACK\n           .\n       COPY CPESEBIC.\n      *- BMPSHELL INITIALIZATION AND CONCLUSION\n      /*****************************************************************\n      * INITIALIZE THE CHECKPOINT SAVE AREA                            *\n       0300P-INITIALIZE-SAVE-AREA.\n           CONTINUE\n           .\n      /*****************************************************************\n      * INITIALIZE THE REPORT TITLES.                                  *\n       0350P-INITIALIZE-REPORT-TITLES.\n           CONTINUE\n           .\n      /*****************************************************************\n      * PROGRAM SPECIFIC INITIALIZATION                                *\n       0400P-INITIALIZE-OTHER.\n           INITIALIZE PROGRAM-SWITCHES\n           PERFORM 0410P-SELECT-SYSPARM-BATCHCTL\n           PERFORM 5000P-GET-NEXT-INPUT-RECORD\n           IF SC-IMS-STAT-END-OF-DB\n               AND PV-COUNT-BATCH = ZERO\n                   MOVE MSG-INPUT-FILE-IS-EMPTY\n                                       TO ERROR-MESSAGE-1\n                   PERFORM 7000P-WRITE-ERROR-RECORD\n                   SET SEND-EMAIL      TO TRUE\n           END-IF\n           .\n      /*****************************************************************\n      * FETCH THE BATCH NUMBERS FROM THE GENERIC SYSTEM PARM TABLE.    *\n       0410P-SELECT-SYSPARM-BATCHCTL.\n           MOVE PL-SYSTEM-CD           TO GNT-SYSTEM-CD\n           MOVE SYSPARM-TBL-ID         TO GNT-TABLE-ID\n           MOVE PL-PGM-NAME            TO SYSPARM-KEY-SYP-PGM-NAME\n           MOVE PL-BATCHCTL            TO SYSPARM-KEY-SYP-PARM-ID\n           MOVE SYSPARM-KEY            TO GNT-KEY-DATA\n           MOVE SL-YES                 TO GNT-SW-ACTIVE\n           PERFORM 9200I-SELECT-MEXS016-GENERIC2\n           IF MEXS016-NOT-FOUND\n              MOVE MSG-MEXS016-SYSPARM\n                                       TO ABEND-MSG\n              MOVE PL-0410P            TO ABEND-PARAGRAPH\n              PERFORM 9999I-ABEND\n           END-IF\n           MOVE GNT-ATTRIBUTE-DATA     TO PV-EXWWB915-SYSPARM-BATCHCTL\n           MOVE PV-EXWWB915-CURR-BATCH-NO\n                                       TO PV-INVDATA-CNTL-CUR-BATCH\n           MOVE SPACES                 TO AUDIT-RECORD\n           WRITE AUDIT-RECORD\n           ADD +1                      TO PV-EXWWB915-CURR-BATCH-NO\n           .\n      /*****************************************************************\n      * LOAD INVOICING SYSTEM VEHICLE LINE.                            *\n       0500P-LOAD-INVEHLN.\n           INITIALIZE INVEHLN-X\n           INITIALIZE PS-INVEHLN-EOF-SW\n           OPEN INPUT INVEHLN-FILE\n           PERFORM UNTIL INVEHLN-EOF\n               READ INVEHLN-FILE              INTO WS-INVOICE-VL\n                 AT END SET INVEHLN-EOF         TO TRUE\n               END-READ\n               IF INVEHLN-EOF\n                  CONTINUE\n               ELSE\n                  ADD +1 TO INVEHLN-X\n                  IF INVEHLN-X > WS-INVEHLN-ROW-MAX\n                     STRING MSG-TBL-CNT\n                            \"TBL= \" V-VL-TBL-ID\n                            DELIMITED BY SIZE INTO ABEND-MSG\n                     MOVE \"0500P\"               TO ABEND-PARAGRAPH\n                     PERFORM 9999I-ABEND\n                  END-IF\n                  MOVE INV-VL-CD        TO INCL-VEH-LN-DATA(INVEHLN-X)\n               END-IF\n           END-PERFORM\n           CLOSE INVEHLN-FILE\n           .\n      /*****************************************************************\n      * LOAD INVOICING SYSTEM COUNTRY.                                 *\n       0550P-LOAD-INCNTRY.\n           INITIALIZE INCNTRY-X\n           INITIALIZE PS-INCNTRY-EOF-SW\n           OPEN INPUT INCNTRY-FILE\n           PERFORM UNTIL INCNTRY-EOF\n               READ INCNTRY-FILE               INTO WS-SOLD-TO-DLR-CTRY\n                 AT END SET INCNTRY-EOF          TO TRUE\n               END-READ\n               IF INCNTRY-EOF\n                  CONTINUE\n               ELSE\n                  ADD +1                         TO INCNTRY-X\n                  IF INCNTRY-X > WS-INCNTRY-ROW-MAX\n                      STRING MSG-TBL-CNT\n                             \"TBL= \" V-CNTRY-TBL-ID\n                             DELIMITED BY SIZE INTO ABEND-MSG\n                      MOVE \"0550P\"               TO ABEND-PARAGRAPH\n                      PERFORM 9999I-ABEND\n                  END-IF\n                  MOVE SLD-TO-DLR-CTRY-CD        TO\n                       INCL-DLR-CNTRY-CD (INCNTRY-X)\n                  MOVE SLD-TO-DLR-ISO-CTRY-CD    TO\n                       INCL-CNTRY-CD (INCNTRY-X)\n               END-IF\n           END-PERFORM\n           CLOSE INCNTRY-FILE\n           .\n      /*****************************************************************\n      * PROGRAM SPECIFIC CONCLUSION                                    *\n       0700P-CONCLUDE-OTHER.\n           .\n      /*****************************************************************\n      * PROGRAM SPECIFIC PROCESSING.                                   *\n       1000P-PROCESS-TRANSACTION.\n           ADD +1 TO PV-INPUT-REC-CNT\n           EVALUATE TRUE\n               WHEN HEADER-NEEDED\n               AND  NOT INV-HEADER-RECORD\n                    MOVE MSG-HEADER-NONE   TO ABEND-MSG\n                    MOVE \"1000P\"           TO ABEND-PARAGRAPH\n                    PERFORM 8000P-WRITE-AUDIT-DETAIL\n                    PERFORM 9999I-ABEND\n               WHEN TRAILER-NEEDED\n               AND  INV-HEADER-RECORD\n                    MOVE MSG-HEADER-BAD    TO ABEND-MSG\n                    MOVE \"1000P\"           TO ABEND-PARAGRAPH\n                    PERFORM 8000P-WRITE-AUDIT-DETAIL\n                    PERFORM 9999I-ABEND\n               WHEN INV-HEADER-RECORD\n                    PERFORM 1100P-PROCESS-HEADER-RECORD\n                    SET TRAILER-NEEDED     TO TRUE\n               WHEN INV-TRAILER-RECORD\n                    PERFORM 1200P-PROCESS-TRAILER-RECORD\n                    SET HEADER-NEEDED      TO TRUE\n               WHEN OTHER\n                    PERFORM 2000P-PROCESS-OTHER-TRANS\n           END-EVALUATE\n           PERFORM 9400I-INCREMENT-CHKP-COUNT\n           PERFORM 5000P-GET-NEXT-INPUT-RECORD\n           IF SC-IMS-STAT-END-OF-DB\n               AND TRAILER-NEEDED\n                   MOVE MSG-TRAILER-MISSING TO ABEND-MSG\n                   MOVE \"1000P\"             TO ABEND-PARAGRAPH\n                   PERFORM 8000P-WRITE-AUDIT-DETAIL\n                   PERFORM 9999I-ABEND\n           END-IF\n           .\n      /*****************************************************************\n      * PROCESS HEADER RECORD                                          *\n       1100P-PROCESS-HEADER-RECORD.\n           PERFORM 1120P-EDIT-PROD-SYSTEM\n           PERFORM 1130P-EDIT-BATCH-NUMBER\n           .\n      /*****************************************************************\n      * EDIT PROD SYSTEM                                               *\n       1120P-EDIT-PROD-SYSTEM.\n           MOVE SL-SYSTEM-CD-EXWW      TO GNT-SYSTEM-CD\n           MOVE SYSPARM-TBL-ID         TO GNT-TABLE-ID\n           MOVE PL-PGM-NAME            TO SYSPARM-KEY-SYP-PGM-NAME\n           MOVE PL-BATCHCTL            TO SYSPARM-KEY-SYP-PARM-ID\n           MOVE SYSPARM-KEY            TO GNT-KEY-DATA\n           MOVE SL-YES                 TO GNT-SW-ACTIVE\n           PERFORM 9200I-SELECT-MEXS016-GENERIC2\n           IF  MEXS016-FOUND\n                MOVE GNT-ATTRIBUTE-DATA (1:5)\n                                       TO PV-HDR-BATCH-NBR\n           ELSE\n                MOVE MSG-HDR-PROD-SYS-2\n                                       TO ABEND-MSG\n                MOVE \"1120P\"           TO ABEND-PARAGRAPH\n                PERFORM 8000P-WRITE-AUDIT-DETAIL\n                PERFORM 9999I-ABEND\n           END-IF\n           .\n      /*****************************************************************\n      * EDIT BATCH NUMBER                                              *\n       1130P-EDIT-BATCH-NUMBER.\n           EVALUATE TRUE\n               WHEN INVDATA-HDR-CURR-BATCH NOT NUMERIC\n                    MOVE MSG-HDR-BATCH-NBR-1  TO ABEND-MSG\n                    MOVE \"1130P\"              TO ABEND-PARAGRAPH\n                    PERFORM 8000P-WRITE-AUDIT-DETAIL\n                    PERFORM 9999I-ABEND\n               WHEN INVDATA-HDR-CURR-BATCH NOT = PV-HDR-BATCH-NBR\n                    MOVE MSG-HDR-BATCH-NBR-2  TO ABEND-MSG\n                    MOVE \"1130P\"              TO ABEND-PARAGRAPH\n                    PERFORM 8000P-WRITE-AUDIT-DETAIL\n                    PERFORM 9999I-ABEND\n               WHEN INVDATA-HDR-CURR-BATCH = PV-HDR-BATCH-NBR\n                   MOVE \"SYSPARM INPUT BATCH NUMBER :\"\n                                              TO AUDIT-LABEL\n                   MOVE INVDATA-HDR-CURR-BATCH\n                                              TO AUDIT-DATA\n                   WRITE AUDIT-RECORD\n                   MOVE INVDATA-HDR-CURR-BATCH\n                                              TO PV-BATCH-NBR\n                   MOVE INVDATA-HDR-CURR-DATE TO PV-BATCH-DT\n           END-EVALUATE\n           .\n      /*****************************************************************\n      * PROCESS TRAILER RECORD                                         *\n       1200P-PROCESS-TRAILER-RECORD.\n           IF  INVDATA-TLR-CURR-BATCH NOT = PV-HDR-BATCH-NBR\n               MOVE MSG-TRAILER-BAD           TO ABEND-MSG\n               MOVE \"1200P\"                   TO ABEND-PARAGRAPH\n               PERFORM 8000P-WRITE-AUDIT-DETAIL\n               PERFORM 9999I-ABEND\n           END-IF\n           IF  INVDATA-TLR-CNT + 2 = PV-COUNT-BATCH\n               MOVE ZERO                      TO PV-COUNT-BATCH\n           ELSE\n               MOVE MSG-TRL-NBR-RECS          TO ABEND-MSG\n               MOVE \"1200P\"                   TO ABEND-PARAGRAPH\n               PERFORM 8000P-WRITE-AUDIT-DETAIL\n               PERFORM 9999I-ABEND\n           END-IF\n           IF  PV-BYPASS-REC-CNT + PV-INS-UPD-REC-CNT =\n               INVDATA-TLR-CNT\n                   MOVE \"TOTAL INSERTED OR UPDATED  : \"\n                                              TO AUDIT-LABEL\n                   MOVE PV-INS-UPD-REC-CNT    TO AUDIT-DATA\n                   WRITE AUDIT-RECORD\n                   MOVE \"TOTAL RECS BYPASSED        : \"\n                                              TO AUDIT-LABEL\n                   MOVE PV-BYPASS-REC-CNT     TO AUDIT-DATA\n                   WRITE AUDIT-RECORD\n                   MOVE SPACES                TO AUDIT-RECORD\n                   WRITE AUDIT-RECORD\n                   MOVE ZERO                  TO PV-BYPASS-REC-CNT\n                   MOVE ZERO                  TO PV-INS-UPD-REC-CNT\n           ELSE\n               MOVE MSG-TRL-NBR-RECS-2        TO ABEND-MSG\n               MOVE \"1200P\"                   TO ABEND-PARAGRAPH\n               PERFORM 8000P-WRITE-AUDIT-DETAIL\n               PERFORM 9999I-ABEND\n           END-IF\n      ****     UPDATE SYSPARM BATCH NBR\n           MOVE PV-HDR-BATCH-NBR              TO PV-ATTRIBUTE-DATA\n           ADD +1                             TO PV-ATTRIBUTE-DATA\n           MOVE SL-SYSTEM-CD-EXWW             TO GNT-SYSTEM-CD\n           MOVE SYSPARM-TBL-ID                TO GNT-TABLE-ID\n           MOVE PL-PGM-NAME                   TO\n                SYSPARM-KEY-SYP-PGM-NAME\n           MOVE PL-BATCHCTL                   TO\n                SYSPARM-KEY-SYP-PARM-ID\n           MOVE SYSPARM-KEY                   TO GNT-KEY-DATA\n           MOVE PV-ATTRIBUTE-DATA             TO GNT-ATTRIBUTE-DATA\n           PERFORM 9210I-UPDATE-MEXS016-GENERIC2\n           .\n      /*****************************************************************\n      * PROCESS OTHER TRANS (DETAIL RECORD, NOT HEADER OR TRAILER)     *\n       2000P-PROCESS-OTHER-TRANS.\n           INITIALIZE PS-ERROR-SW\n           INITIALIZE ERROR-RECORD\n           PERFORM 2100P-EDIT-VIN\n           PERFORM 2200P-SEARCH-VL-TABLE\n           IF VEHLN-FOUND\n              AND ERROR-NOT-FOUND\n              IF  (IDR-SLD-DC-DIV = PL-F\n              OR   IDR-SLD-DC-DIV = PL-C)\n                  PERFORM 2300P-MOVE-MEXW046\n              ELSE\n                  ADD +1                      TO PV-BYPASS-REC-CNT\n                  MOVE IDR-VIN                TO ERROR-VIN\n                  MOVE MSG-DIV-NOT-FOUND\n                                              TO ERROR-MESSAGE-1\n                  MOVE PV-BATCH-DT            TO ERROR-BATCH-DT\n                  MOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR\n                  PERFORM 7000P-WRITE-ERROR-RECORD\n              END-IF\n           ELSE\n              ADD +1                      TO PV-BYPASS-REC-CNT\n           END-IF\n           .\n      /*****************************************************************\n      * VIN CANNOT BE SPACES OR HIGH VALUES.  RECORD WILL BE BYPASSED. *\n       2100P-EDIT-VIN.\n           IF IDR-VIN > SPACES\n               AND IDR-VIN NOT = HIGH-VALUES\n               INSPECT IDR-VIN CONVERTING\n                     PL-CHAR-ALPHABETIC-LOWER TO\n                     PL-CHAR-ALPHABETIC-UPPER\n               PERFORM 2150P-VALIDATE-17-CHAR-VIN\n           ELSE\n               MOVE IDR-VIN                   TO ERROR-VIN\n               MOVE MSG-VIN-SPACES-OR-HIGH-VALUES\n                                              TO ERROR-MESSAGE-1\n               MOVE PV-BATCH-DT               TO ERROR-BATCH-DT\n               MOVE PV-BATCH-NBR              TO ERROR-BATCH-NBR\n               PERFORM 7000P-WRITE-ERROR-RECORD\n               SET SEND-EMAIL                 TO TRUE\n               SET ERROR-FOUND                TO TRUE\n           END-IF\n           IF ERROR-FOUND\n              CONTINUE\n           ELSE\n              SET ERROR-NOT-FOUND             TO TRUE\n           END-IF\n           .\n      /*****************************************************************\n      * VIN CANNOT BE SPACES OR HIGH VALUES. RECORD WILL BE BYPASSED.  *\n       2150P-VALIDATE-17-CHAR-VIN.\n           MOVE ZERO                           TO PV-VIN-SPACE-COUNT\n           INSPECT IDR-VIN TALLYING\n                   PV-VIN-SPACE-COUNT FOR ALL \" \"\n           IF PV-VIN-SPACE-COUNT > 0\n               MOVE IDR-VIN                    TO ERROR-VIN\n               MOVE MSG-VIN-CONTAINS-SPACES    TO ERROR-MESSAGE-1\n               MOVE PV-BATCH-DT                TO ERROR-BATCH-DT\n               MOVE PV-BATCH-NBR               TO ERROR-BATCH-NBR\n               PERFORM 7000P-WRITE-ERROR-RECORD\n               SET SEND-EMAIL                  TO TRUE\n               SET ERROR-FOUND                 TO TRUE\n           ELSE\n               MOVE ZERO                       TO PV-VIN-SP-CHAR-COUNT\n               INSPECT IDR-VIN TALLYING\n                       PV-VIN-SP-CHAR-COUNT FOR ALL\n               '*' '(' ')' '!' '@' '�' '$' '#' '&' '+' '=' '{' '}'\n                '�' '�' ':' ';' '/' '\\' '?' '>' '<' '%' '`' '_' '|'\n               IF PV-VIN-SP-CHAR-COUNT > 0\n                   MOVE IDR-VIN                TO ERROR-VIN\n                   MOVE MSG-VIN-CONTAINS-SPEC-CHARS\n                                               TO ERROR-MESSAGE-1\n                   MOVE PV-BATCH-DT            TO ERROR-BATCH-DT\n                   MOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR\n                   PERFORM 7000P-WRITE-ERROR-RECORD\n                   SET SEND-EMAIL              TO TRUE\n                   SET ERROR-FOUND             TO TRUE\n               END-IF\n           END-IF\n           .\n      /*****************************************************************\n      * SEARCH VL TABLE.  IF VL NOT FOUND THE RECORD WILL BE BYPASSED. *\n       2200P-SEARCH-VL-TABLE.\n           INITIALIZE PS-VEHLN-SW\n           PERFORM\n               VARYING INVEHLN-X FROM +1 BY +1\n                 UNTIL IDR-INV-VEH-LINE =\n                         INCL-VEH-LN-DATA(INVEHLN-X)\n                    OR INVEHLN-X > WS-INVEHLN-ROW-MAX\n           END-PERFORM\n           IF IDR-INV-VEH-LINE = INCL-VEH-LN-DATA(INVEHLN-X)\n                SET VEHLN-FOUND TO TRUE\n           ELSE\n                MOVE IDR-VIN                TO ERROR-VIN\n                MOVE MSG-VEH-LINE-NOT-FOUND TO ERROR-MESSAGE-1\n                MOVE IDR-INV-VEH-LINE       TO ERROR-MESSAGE-2\n                MOVE PV-BATCH-DT            TO ERROR-BATCH-DT\n                MOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR\n                PERFORM 7000P-WRITE-ERROR-RECORD\n           END-IF\n           .\n      /*****************************************************************\n      * MOVE INPUT DATA TO TABLE VARIBLES TO INSERT INTO MEXW046       *\n       2300P-MOVE-MEXW046.\n           MOVE IDR-VIN                  TO NAV-VIN-C,\n                                            NAO-VIN-C\n           MOVE IDR-DLR-VEH-DESC         TO NAV-DLR-VEH-X\n           MOVE IDR-INV-VEH-LINE         TO NAV-INV-VL-C\n           MOVE IDR-EXT-COLOR            TO NAV-EXT-CLR-N\n           MOVE IDR-INT-COLOR            TO NAV-INT-CLR-N\n           MOVE IDR-BODY-CD              TO NAV-BODY-C\n           MOVE IDR-PEP-CD               TO NAV-PEP-C\n           PERFORM 2400P-GET-MKT-MDL-YR\n           MOVE IDR-SLD-DLR-CODE         TO NAV-SLD-TO-DLR-C\n           MOVE IDR-SLD-PA-CODE          TO NAV-PA-DLR-C\n           MOVE IDR-FTC-DLR              TO NAV-FTC-DLR-C\n           MOVE IDR-INVOICE-TYPE         TO NAV-INV-TYPE-C\n           MOVE IDR-PRICE-LEVEL          TO NAV-PRICE-LVL-C\n           MOVE IDR-BASE-VEH-AMT         TO NAV-BASE-VEH-A\n           MOVE IDR-BASE-DLR-PRICE       TO NAV-BASE-DLR-PRICE-A\n           MOVE IDR-BASE-UNIT-ADJ-MEMO   TO NAV-BASE-UNIT-ADJ-MEMO-A\n           MOVE IDR-OPT-TOT-DLR          TO NAV-TOT-DLR-OPTS-A\n           MOVE IDR-OPT-ADJ-MEMO         TO NAV-OPT-ADJ-MEMO-A\n           MOVE IDR-DEST-DELIV-CHG       TO NAV-DEST-DELIV-CHG-A\n           PERFORM 2500P-MOVE-DISCOUNT-AMTS\n           MOVE IDR-OPT-HLDBK            TO NAV-OPT-HOLDBACK-A\n           MOVE IDR-BASE-HLDBK           TO NAV-BASE-HOLDBACK-A\n           MOVE IDR-FDAF-ASSESS          TO NAV-FDAF-ASSESS-A\n           MOVE IDR-FIN-CHG              TO NAV-FIN-COST-A\n           MOVE IDR-FUEL-CHG             TO NAV-FUEL-CHG-A\n           MOVE IDR-INV-TOTAL-AMT        TO NAV-INV-TOT-A\n           PERFORM 2600P-GET-DLR-CNTRY\n           MOVE PL-Y                     TO NAV-REBILL-F\n           MOVE PL-PGM-NAME              TO NAV-UPDT-ID-C\n           PERFORM 4000P-INSERT-MEXW046\n           EVALUATE TRUE\n               WHEN SC-DB2-SQLCODE-OK\n                    PERFORM 3000P-LOAD-MEXW047\n               WHEN SC-DB2-SQLCODE-DUP-INSERT\n                    PERFORM 4100P-UPDATE-MEXW046\n                    PERFORM 4300P-DELETE-MEXW047\n                    PERFORM 3000P-LOAD-MEXW047\n           END-EVALUATE.\n      /*****************************************************************\n      * GET MARKET MODEL YEAR                                          *\n       2400P-GET-MKT-MDL-YR.\n           MOVE PL-SYSTEM-CD               TO GNT-SYSTEM-CD\n           MOVE PL-TABLE-ID                TO GNT-TABLE-ID\n           MOVE IDR-MDL-YR-DIGIT           TO GNT-KEY-DATA\n           MOVE SL-YES                     TO GNT-SW-ACTIVE\n           PERFORM 9200I-SELECT-MEXS016-GENERIC2\n           IF MEXS016-FOUND\n               MOVE GNT-ATTRIBUTE-DATA     TO PV-MODEL-YEAR\n               MOVE PV-INT-MDL-YR          TO NAV-MKT-MDL-YR-R\n           ELSE\n               MOVE IDR-VIN                TO ERROR-VIN\n               MOVE MSG-MKT-MDL-YR-NOT-FOUND\n                                           TO ERROR-MESSAGE-1\n               MOVE IDR-MDL-YR-DIGIT       TO ERROR-MESSAGE-2\n               MOVE PV-BATCH-DT            TO ERROR-BATCH-DT\n               MOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR\n               PERFORM 7000P-WRITE-ERROR-RECORD\n               MOVE PL-FOUR-ZEROS      TO NAV-MKT-MDL-YR-R\n               SET SEND-EMAIL          TO TRUE\n           END-IF\n           .\n      /*****************************************************************\n      * MOVE DISCOUNT AMOUNTS                                          *\n       2500P-MOVE-DISCOUNT-AMTS.\n               IF IDR-BONUS-DISC-DESC(1) > SPACES\n                   MOVE IDR-BONUS-DISC-DESC(1)TO NAV-DLR-BONUS-DISC-1-X\n                   MOVE IDR-BONUS-DISC-DLR(1) TO NAV-DLR-BONUS-DISC-1-A\n               ELSE\n                   MOVE SPACES                TO NAV-DLR-BONUS-DISC-1-X\n                   MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-1-A\n               END-IF\n               IF IDR-BONUS-DISC-DESC(2) > SPACES\n                   MOVE IDR-BONUS-DISC-DESC(2)TO NAV-DLR-BONUS-DISC-2-X\n                   MOVE IDR-BONUS-DISC-DLR(2) TO NAV-DLR-BONUS-DISC-2-A\n               ELSE\n                   MOVE SPACES                TO NAV-DLR-BONUS-DISC-2-X\n                   MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-2-A\n               END-IF\n               IF IDR-BONUS-DISC-DESC(3) > SPACES\n                   MOVE IDR-BONUS-DISC-DESC(3)TO NAV-DLR-BONUS-DISC-3-X\n                   MOVE IDR-BONUS-DISC-DLR(3) TO NAV-DLR-BONUS-DISC-3-A\n               ELSE\n                   MOVE SPACES                TO NAV-DLR-BONUS-DISC-3-X\n                   MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-3-A\n               END-IF\n               IF IDR-BONUS-DISC-DESC(4) > SPACES\n                   MOVE IDR-BONUS-DISC-DESC(4)TO NAV-DLR-BONUS-DISC-4-X\n                   MOVE IDR-BONUS-DISC-DLR(4) TO NAV-DLR-BONUS-DISC-4-A\n               ELSE\n                   MOVE SPACES                TO NAV-DLR-BONUS-DISC-4-X\n                   MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-4-A\n               END-IF\n               IF IDR-BONUS-DISC-DESC(5) > SPACES\n                   MOVE IDR-BONUS-DISC-DESC(5)TO NAV-DLR-BONUS-DISC-5-X\n                   MOVE IDR-BONUS-DISC-DLR(5) TO NAV-DLR-BONUS-DISC-5-A\n               ELSE\n                   MOVE SPACES                TO NAV-DLR-BONUS-DISC-5-X\n                   MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-5-A\n               END-IF\n               IF IDR-BONUS-DISC-DESC(6) > SPACES\n                   MOVE IDR-BONUS-DISC-DESC(6)TO NAV-DLR-BONUS-DISC-6-X\n                   MOVE IDR-BONUS-DISC-DLR(6) TO NAV-DLR-BONUS-DISC-6-A\n               ELSE\n                   MOVE SPACES                TO NAV-DLR-BONUS-DISC-6-X\n                   MOVE ZEROS                 TO NAV-DLR-BONUS-DISC-6-A\n               END-IF\n           .\n      /*****************************************************************\n      * GET ISO COUNTRY CODE                                           *\n       2600P-GET-DLR-CNTRY.\n           PERFORM\n               VARYING INCNTRY-X FROM +1 BY +1\n               UNTIL IDR-SLD-DC-DIV =\n                         INCL-DLR-CNTRY-CD(INCNTRY-X)\n                  OR INCNTRY-X > WS-INCNTRY-ROW-MAX\n           END-PERFORM\n           IF IDR-SLD-DC-DIV = INCL-DLR-CNTRY-CD(INCNTRY-X)\n              MOVE INCL-CNTRY-CD(INCNTRY-X) TO\n                   NAV-DLR-COUNTRY-ISO3-C\n           ELSE\n               MOVE IDR-VIN                 TO ERROR-VIN\n               MOVE MSG-COUNTRY-NOT-FOUND   TO ERROR-MESSAGE-1\n               MOVE IDR-SLD-DC-DIV          TO ERROR-MESSAGE-2\n               MOVE PV-BATCH-DT             TO ERROR-BATCH-DT\n               MOVE PV-BATCH-NBR            TO ERROR-BATCH-NBR\n               PERFORM 7000P-WRITE-ERROR-RECORD\n               SET SEND-EMAIL               TO TRUE\n           END-IF\n           .\n      /*****************************************************************\n      * LOAD MEXW047 WITH DATA FROM IDR OTPIONS, STANDARD OPTIONS AND  *\n      * THE FIRST RAPID SPEC.                                          *\n       3000P-LOAD-MEXW047.\n           MOVE +1 TO NAO-SEQ-R\n           PERFORM 3100P-LOAD-IDR-OPTS\n           PERFORM 3200P-LOAD-STANDARD-OPTS\n           PERFORM 3300P-LOAD-RAPID-SPEC\n           .\n      /*****************************************************************\n      * LOAD IDR OPTIONS INTO TABLE MEXW047                            *\n       3100P-LOAD-IDR-OPTS.\n           PERFORM VARYING IDR-AG-IDX FROM +1 BY +1\n             UNTIL IDR-AG-IDX > +87\n                OR (IDR-OPT-CODE (IDR-AG-IDX) = SPACES\n               AND  IDR-OPT-DESC(IDR-AG-IDX)  = SPACES)\n               MOVE IDR-OPT-CODE (IDR-AG-IDX)      TO\n                    NAO-OPTION-C\n               MOVE IDR-OPT-DESC (IDR-AG-IDX)      TO\n                    NAO-OPTION-N\n               MOVE IDR-OPT-DLR-PRICE (IDR-AG-IDX) TO\n                    NAO-OPTION-PRICE-A\n               MOVE PL-OPT                         TO\n                    NAO-SUB-HEADING-N\n               MOVE PL-PGM-NAME                    TO\n                    NAO-UPDT-ID-C\n               PERFORM 4200P-INSERT-MEXW047\n               INITIALIZE NAO-OPTION-C\n               ADD +1 TO NAO-SEQ-R\n           END-PERFORM\n           .\n      /*****************************************************************\n      * LOAD STANDARD OPTIONS INTO TABLE MEXW047                       *\n       3200P-LOAD-STANDARD-OPTS.\n           INITIALIZE NAO-OPTION-PRICE-A.\n           PERFORM VARYING IDR-SE-IDX FROM +1 BY +1\n             UNTIL IDR-SE-IDX > +64\n                OR IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-WARRANTY\n             EVALUATE TRUE\n                 WHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-EXTERIOR\n                     MOVE PL-EXTERIOR-2     TO NAO-SUB-HEADING-N\n                 WHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-INTERIOR\n                     MOVE PL-INTERIOR-2     TO NAO-SUB-HEADING-N\n                 WHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-FUNCTIONAL\n                     MOVE PL-FUNCTIONAL-2   TO NAO-SUB-HEADING-N\n                 WHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-SAFETY\n                     MOVE PL-SAFETY-2       TO NAO-SUB-HEADING-N\n                 WHEN OTHER\n                     IF IDR-STD-EQUIP-DESC(IDR-SE-IDX) > SPACES\n                         MOVE IDR-STD-EQUIP-DESC(IDR-SE-IDX)\n                                            TO NAO-OPTION-N\n                         MOVE PL-PGM-NAME   TO NAO-UPDT-ID-C\n                         PERFORM 4200P-INSERT-MEXW047\n                         ADD +1 TO NAO-SEQ-R\n                     END-IF\n             END-EVALUATE\n           END-PERFORM\n           .\n      /*****************************************************************\n      * LOAD FIRST OCCURENCE OF THE RAPID SPEC INTO TABLE MEXW047      *\n       3300P-LOAD-RAPID-SPEC.\n           IF IDR-RAPID-EQUIP(1) > SPACES\n               MOVE IDR-RAPID-EQUIP(1)   TO NAO-OPTION-N\n               MOVE IDR-RAPID-AMT(1)     TO NAO-OPTION-PRICE-A\n               MOVE PL-RAPID-SPEC-HEADER TO NAO-SUB-HEADING-N\n               MOVE PL-PGM-NAME          TO NAO-UPDT-ID-C\n               PERFORM 4200P-INSERT-MEXW047\n           END-IF\n           .\n      /*****************************************************************\n      * INSERT MEXW046_NAV_INV_VIN                                     *\n       4000P-INSERT-MEXW046.\n           EXEC SQL\n               INSERT INTO MEXW046_NAV_INV_VIN\n                      ( NAV_VIN_C\n                       ,NAV_DLR_VEH_X\n                       ,NAV_INV_VL_C\n                       ,NAV_EXT_CLR_N\n                       ,NAV_INT_CLR_N\n                       ,NAV_BODY_C\n                       ,NAV_PEP_C\n                       ,NAV_MKT_MDL_YR_R\n                       ,NAV_SLD_TO_DLR_C\n                       ,NAV_PA_DLR_C\n                       ,NAV_FTC_DLR_C\n                       ,NAV_INV_TYPE_C\n                       ,NAV_PRICE_LVL_C\n                       ,NAV_BASE_VEH_A\n                       ,NAV_BASE_DLR_PRICE_A\n                       ,NAV_BASE_UNIT_ADJ_MEMO_A\n                       ,NAV_TOT_DLR_OPTS_A\n                       ,NAV_OPT_ADJ_MEMO_A\n                       ,NAV_DEST_DELIV_CHG_A\n                       ,NAV_DLR_BONUS_DISC_1_X\n                       ,NAV_DLR_BONUS_DISC_1_A\n                       ,NAV_DLR_BONUS_DISC_2_X\n                       ,NAV_DLR_BONUS_DISC_2_A\n                       ,NAV_DLR_BONUS_DISC_3_X\n                       ,NAV_DLR_BONUS_DISC_3_A\n                       ,NAV_DLR_BONUS_DISC_4_X\n                       ,NAV_DLR_BONUS_DISC_4_A\n                       ,NAV_DLR_BONUS_DISC_5_X\n                       ,NAV_DLR_BONUS_DISC_5_A\n                       ,NAV_DLR_BONUS_DISC_6_X\n                       ,NAV_DLR_BONUS_DISC_6_A\n                       ,NAV_OPT_HOLDBACK_A\n                       ,NAV_BASE_HOLDBACK_A\n                       ,NAV_FDAF_ASSESS_A\n                       ,NAV_FIN_COST_A\n                       ,NAV_FUEL_CHG_A\n                       ,NAV_INV_TOT_A\n                       ,NAV_DLR_COUNTRY_ISO3_C\n                       ,NAV_REBILL_F\n                       ,NAV_UPDT_ID_C\n                       ,NAV_UPDT_S\n                       ,NAV_GMT_S\n                      )\n                VALUES(:NAV-VIN-C\n                      ,:NAV-DLR-VEH-X\n                      ,:NAV-INV-VL-C\n                      ,:NAV-EXT-CLR-N\n                      ,:NAV-INT-CLR-N\n                      ,:NAV-BODY-C\n                      ,:NAV-PEP-C\n                      ,:NAV-MKT-MDL-YR-R\n                      ,:NAV-SLD-TO-DLR-C\n                      ,:NAV-PA-DLR-C\n                      ,:NAV-FTC-DLR-C\n                      ,:NAV-INV-TYPE-C\n                      ,:NAV-PRICE-LVL-C\n                      ,:NAV-BASE-VEH-A\n                      ,:NAV-BASE-DLR-PRICE-A\n                      ,:NAV-BASE-UNIT-ADJ-MEMO-A\n                      ,:NAV-TOT-DLR-OPTS-A\n                      ,:NAV-OPT-ADJ-MEMO-A\n                      ,:NAV-DEST-DELIV-CHG-A\n                      ,:NAV-DLR-BONUS-DISC-1-X\n                      ,:NAV-DLR-BONUS-DISC-1-A\n                      ,:NAV-DLR-BONUS-DISC-2-X\n                      ,:NAV-DLR-BONUS-DISC-2-A\n                      ,:NAV-DLR-BONUS-DISC-3-X\n                      ,:NAV-DLR-BONUS-DISC-3-A\n                      ,:NAV-DLR-BONUS-DISC-4-X\n                      ,:NAV-DLR-BONUS-DISC-4-A\n                      ,:NAV-DLR-BONUS-DISC-5-X\n                      ,:NAV-DLR-BONUS-DISC-5-A\n                      ,:NAV-DLR-BONUS-DISC-6-X\n                      ,:NAV-DLR-BONUS-DISC-6-A\n                      ,:NAV-OPT-HOLDBACK-A\n                      ,:NAV-BASE-HOLDBACK-A\n                      ,:NAV-FDAF-ASSESS-A\n                      ,:NAV-FIN-COST-A\n                      ,:NAV-FUEL-CHG-A\n                      ,:NAV-INV-TOT-A\n                      ,:NAV-DLR-COUNTRY-ISO3-C\n                      ,:NAV-REBILL-F\n                      ,:NAV-UPDT-ID-C\n                      , CURRENT TIMESTAMP\n                      , CURRENT TIMESTAMP - CURRENT TIMEZONE\n                      )\n           END-EXEC\n           MOVE SQLCODE                           TO SC-DB2-SQLCODE\n           EVALUATE TRUE\n              WHEN SC-DB2-SQLCODE-OK\n                  ADD +1                          TO PV-INS-UPD-REC-CNT\n              WHEN SC-DB2-SQLCODE-DUP-INSERT\n                  CONTINUE\n              WHEN OTHER\n                  MOVE SPACES                     TO AUDIT-RECORD\n                  STRING \"VIN = \" , NAV-VIN-C\n                  DELIMITED BY SIZE             INTO AUDIT-DATA\n                  WRITE AUDIT-RECORD\n                  MOVE SQLCODE                    TO DB2-ABEND-SQLCODE\n                  MOVE \"INSERT\"                   TO DB2-ABEND-FUNCTION\n                  MOVE \" MEXW046_NAV_INV_VIN \"    TO DB2-ABEND-TABLE\n                  MOVE DB2-ABEND-MSG              TO ABEND-MSG\n                  MOVE \"4000P-INSERT-MEXW046\"     TO ABEND-PARAGRAPH\n                  PERFORM 9999I-ABEND\n           END-EVALUATE\n           .\n      /*****************************************************************\n      * UPDATE MEXW046_NAV_INV_VIN                                     *\n       4100P-UPDATE-MEXW046.\n           EXEC SQL\n               UPDATE MEXW046_NAV_INV_VIN\n               SET NAV_DLR_VEH_X            = :NAV-DLR-VEH-X\n                  ,NAV_INV_VL_C             = :NAV-INV-VL-C\n                  ,NAV_EXT_CLR_N            = :NAV-EXT-CLR-N\n                  ,NAV_INT_CLR_N            = :NAV-INT-CLR-N\n                  ,NAV_BODY_C               = :NAV-BODY-C\n                  ,NAV_PEP_C                = :NAV-PEP-C\n                  ,NAV_MKT_MDL_YR_R         = :NAV-MKT-MDL-YR-R\n                  ,NAV_SLD_TO_DLR_C         = :NAV-SLD-TO-DLR-C\n                  ,NAV_PA_DLR_C             = :NAV-PA-DLR-C\n                  ,NAV_FTC_DLR_C            = :NAV-FTC-DLR-C\n                  ,NAV_INV_TYPE_C           = :NAV-INV-TYPE-C\n                  ,NAV_PRICE_LVL_C          = :NAV-PRICE-LVL-C\n                  ,NAV_BASE_VEH_A           = :NAV-BASE-VEH-A\n                  ,NAV_BASE_DLR_PRICE_A     = :NAV-BASE-DLR-PRICE-A\n                  ,NAV_BASE_UNIT_ADJ_MEMO_A = :NAV-BASE-UNIT-ADJ-MEMO-A\n                  ,NAV_TOT_DLR_OPTS_A       = :NAV-TOT-DLR-OPTS-A\n                  ,NAV_OPT_ADJ_MEMO_A       = :NAV-OPT-ADJ-MEMO-A\n                  ,NAV_DEST_DELIV_CHG_A     = :NAV-DEST-DELIV-CHG-A\n                  ,NAV_DLR_BONUS_DISC_1_X   = :NAV-DLR-BONUS-DISC-1-X\n                  ,NAV_DLR_BONUS_DISC_1_A   = :NAV-DLR-BONUS-DISC-1-A\n                  ,NAV_DLR_BONUS_DISC_2_X   = :NAV-DLR-BONUS-DISC-2-X\n                  ,NAV_DLR_BONUS_DISC_2_A   = :NAV-DLR-BONUS-DISC-2-A\n                  ,NAV_DLR_BONUS_DISC_3_X   = :NAV-DLR-BONUS-DISC-3-X\n                  ,NAV_DLR_BONUS_DISC_3_A   = :NAV-DLR-BONUS-DISC-3-A\n                  ,NAV_DLR_BONUS_DISC_4_X   = :NAV-DLR-BONUS-DISC-4-X\n                  ,NAV_DLR_BONUS_DISC_4_A   = :NAV-DLR-BONUS-DISC-4-A\n                  ,NAV_DLR_BONUS_DISC_5_X   = :NAV-DLR-BONUS-DISC-5-X\n                  ,NAV_DLR_BONUS_DISC_5_A   = :NAV-DLR-BONUS-DISC-5-A\n                  ,NAV_DLR_BONUS_DISC_6_X   = :NAV-DLR-BONUS-DISC-6-X\n                  ,NAV_DLR_BONUS_DISC_6_A   = :NAV-DLR-BONUS-DISC-6-A\n                  ,NAV_OPT_HOLDBACK_A       = :NAV-OPT-HOLDBACK-A\n                  ,NAV_BASE_HOLDBACK_A      = :NAV-BASE-HOLDBACK-A\n                  ,NAV_FDAF_ASSESS_A        = :NAV-FDAF-ASSESS-A\n                  ,NAV_FIN_COST_A           = :NAV-FIN-COST-A\n                  ,NAV_FUEL_CHG_A           = :NAV-FUEL-CHG-A\n                  ,NAV_INV_TOT_A            = :NAV-INV-TOT-A\n                  ,NAV_DLR_COUNTRY_ISO3_C   = :NAV-DLR-COUNTRY-ISO3-C\n                  ,NAV_REBILL_F             = :NAV-REBILL-F\n                  ,NAV_UPDT_ID_C            = :NAV-UPDT-ID-C\n                  ,NAV_UPDT_S               =  CURRENT TIMESTAMP\n                  ,NAV_GMT_S                =  CURRENT TIMESTAMP -\n                                               CURRENT TIMEZONE\n             WHERE NAV_VIN_C                = :NAV-VIN-C\n           END-EXEC\n           MOVE SQLCODE TO SC-DB2-SQLCODE\n           EVALUATE TRUE\n              WHEN SC-DB2-SQLCODE-OK\n                  ADD +1                        TO PV-INS-UPD-REC-CNT\n              WHEN NOT SC-DB2-SQLCODE-OK\n                  MOVE SPACES                   TO AUDIT-RECORD\n                  STRING \"VIN = \" , NAV-VIN-C\n                  DELIMITED BY SIZE           INTO AUDIT-DATA\n                  WRITE AUDIT-RECORD\n                  MOVE SQLCODE                  TO DB2-ABEND-SQLCODE\n                  MOVE \"UPDATE\"                 TO DB2-ABEND-FUNCTION\n                  MOVE \"MEXW046_NAO_REBILL_VIN\" TO DB2-ABEND-TABLE\n                  MOVE DB2-ABEND-MSG            TO ABEND-MSG\n                  MOVE \"4100P-UPDATE-MEXW046\"   TO ABEND-PARAGRAPH\n                  PERFORM 9999I-ABEND\n           END-EVALUATE\n           .\n      /*****************************************************************\n      * INSERT MEXW047                                                 *\n       4200P-INSERT-MEXW047.\n           EXEC SQL\n               INSERT INTO MEXW047_NAO_INV_OPT\n                      ( NAV_VIN_C\n                       ,NAO_SEQ_R\n                       ,NAO_OPTION_C\n                       ,NAO_OPTION_N\n                       ,NAO_OPTION_PRICE_A\n                       ,NAO_SUB_HEADING_N\n                       ,NAO_UPDT_ID_C\n                       ,NAO_UPDT_S\n                       ,NAO_GMT_S\n                       )\n                VALUES(:NAO-VIN-C\n                      ,:NAO-SEQ-R\n                      ,:NAO-OPTION-C\n                      ,:NAO-OPTION-N\n                      ,:NAO-OPTION-PRICE-A\n                      ,:NAO-SUB-HEADING-N\n                      ,:NAO-UPDT-ID-C\n                      , CURRENT TIMESTAMP\n                      , CURRENT TIMESTAMP - CURRENT TIMEZONE\n                      )\n              END-EXEC\n           MOVE SQLCODE                          TO SC-DB2-SQLCODE\n           EVALUATE TRUE\n              WHEN SC-DB2-SQLCODE-OK\n                   CONTINUE\n              WHEN OTHER\n                   MOVE SPACES                   TO AUDIT-RECORD\n                   STRING \"VIN = \" , NAV-VIN-C \", \" ,\n                          \"OPT CD = \" , NAO-OPTION-C\n                  DELIMITED BY SIZE            INTO AUDIT-DATA\n                  WRITE AUDIT-RECORD\n                  MOVE SQLCODE                   TO DB2-ABEND-SQLCODE\n                  MOVE \"INSERT\"                  TO DB2-ABEND-FUNCTION\n                  MOVE \" MEXW047_NAO_INV_OPT \"   TO DB2-ABEND-TABLE\n                  MOVE DB2-ABEND-MSG             TO ABEND-MSG\n                  MOVE \"4200P-INSERT-MEXW047\"    TO ABEND-PARAGRAPH\n                  PERFORM 9999I-ABEND\n           END-EVALUATE\n           .\n      /*****************************************************************\n      * DELETE MEXW047                                                 *\n       4300P-DELETE-MEXW047.\n           EXEC SQL\n               DELETE FROM MEXW047_NAO_INV_OPT\n               WHERE NAV_VIN_C = :NAO-VIN-C\n           END-EXEC\n           MOVE SQLCODE TO SC-DB2-SQLCODE\n           EVALUATE TRUE\n               WHEN SC-DB2-SQLCODE-OK\n               WHEN SC-DB2-SQLCODE-NOT-FOUND\n                    CONTINUE\n               WHEN NOT SC-DB2-SQLCODE-OK\n                   MOVE SPACES                   TO AUDIT-RECORD\n                   STRING \"VIN = \" , NAO-VIN-C\n                   DELIMITED BY SIZE           INTO AUDIT-DATA\n                   WRITE AUDIT-RECORD\n                   MOVE SQLCODE                  TO DB2-ABEND-SQLCODE\n                   MOVE \"DELETE\"                 TO DB2-ABEND-FUNCTION\n                   MOVE \"MEXW047_NAO_INV_OPT\"    TO DB2-ABEND-TABLE\n                   MOVE DB2-ABEND-MSG            TO ABEND-MSG\n                   MOVE \"4300P-DELETE-MEXW047\"   TO ABEND-PARAGRAPH\n                   PERFORM 9999I-ABEND\n           END-EVALUATE\n           .\n      /*****************************************************************\n      * GET NEXT GSAM INPUT-RECORD.                                    *\n       5000P-GET-NEXT-INPUT-RECORD.\n           CALL \"CBLTDLI\" USING SL-FUNC-GN\n                                INVDATA-IN-PCB\n                                INVOICE-DATA-RECORD\n           MOVE INVDATA-IN-PCB-STATUS          TO SC-IMS-STAT\n           EVALUATE TRUE\n              WHEN SC-IMS-STAT-OK\n                 MOVE INVOICE-DATA-RECORD      TO INVDATA-RECORD\n                 ADD +1                        TO PV-COUNT-BATCH\n              WHEN SC-IMS-STAT-END-OF-DB\n                 SET INPUT-EOF                 TO TRUE\n              WHEN OTHER\n                 MOVE INVDATA-IN-PCB-STATUS    TO IMS-ABEND-STATUS\n                 MOVE SL-FUNC-GN               TO IMS-ABEND-FUNCTION\n                 MOVE INVDATA-IN-PCB-NAME      TO IMS-ABEND-PCB-NAME\n                 MOVE IMS-ABEND-MSG            TO ABEND-MSG\n                 MOVE \"5000P\"                  TO ABEND-PARAGRAPH\n                 PERFORM 9999I-ABEND\n           END-EVALUATE\n           .\n      /*****************************************************************\n      * INSERT ERROR RECORD TO GSAM                                    *\n       7000P-WRITE-ERROR-RECORD.\n           CALL \"CBLTDLI\" USING SL-FUNC-ISRT\n                                ERROR-PCB\n                                ERROR-RECORD\n           MOVE ERROR-PCB-STATUS      TO SC-IMS-STAT\n           IF  SC-IMS-STAT-OK\n               MOVE SPACES            TO ERROR-RECORD\n           ELSE\n               MOVE ERROR-PCB-STATUS  TO IMS-ABEND-STATUS\n               MOVE SL-FUNC-ISRT      TO IMS-ABEND-FUNCTION\n               MOVE ERROR-PCB-NAME    TO IMS-ABEND-PCB-NAME\n               MOVE IMS-ABEND-MSG     TO ABEND-MSG\n               MOVE \"7000P\"           TO ABEND-PARAGRAPH\n               PERFORM 9999I-ABEND\n           END-IF\n           .\n      /*****************************************************************\n      * WRITE AUDIT DETAIL LINES                                       *\n       8000P-WRITE-AUDIT-DETAIL.\n           MOVE SPACES                         TO AUDIT-RECORD\n           WRITE AUDIT-RECORD\n           MOVE \"OUTPUT BATCH NUMBER        :\" TO AUDIT-LABEL\n           MOVE PV-EXWWB915-CURR-BATCH-NO      TO AUDIT-DATA\n           WRITE AUDIT-RECORD\n           .\n       COPY CPESEBCR.\n      *- BMPSHELL CALLED ROUTINES",
+    "structured_code": {
+      "identification_division": [
+        {
+          "line": "1-20",
+          "type": "NA",
+          "syntax": "IDENTIFICATION DIVISION.\nPROGRAM-ID.     EXWWB915.\nDATE-WRITTEN.   OCTOBER 2012.\nDATE-COMPILED.\n*  PROGRAM DESCRIPTION: THIS PROGRAM READS IN THE INVDATA BANK   *\n*  FILE FROM INVOICING, EXTRACTS REBILL RECORDS AND INSERTS THE  *\n*  DATA INTO THE GEVIS DATABASE.                                 *\n*  INPUT FILE  : FDIP.INV.INVDATAX.GEVIS(0)                      *\n*  TABLES      : MEXW046_NAV_INV_VIN                             *\n*                MEXW047_NAO_INV_OPT                             *\n*                       REVISION LOG                             *\n* DATE    : 10/00/2012  PROGRAMMER: DAWN MAHN                    *\n* ETRACKER: 11300010                                             *\n* REASON  : ORIGINAL PROGRAM CREATION.                           *\n* DATE    : 05/07/2020  PROGRAMMER: CANDACE BOERNER              *\n* RALLY   : F259434/US1597336                                    *\n* REASON  : VI&D FILE LAYOUT CHANGE.  MODIFIED COPYBOOK CPEWIIDR.*\n* REASON  : CHANGE IDR-RAPID-SPEC-GRP OCCURS FROM 35 TO 31.      *\n*           ADD FILLER (44 SPACES) AFTER FIELD IDR-RAPID-MSRP    *",
+          "is_file_call_required": false
+        }
+      ],
+      "environment_division": [
+        {
+          "line": "21-26",
+          "type": "NA",
+          "syntax": "ENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\nSELECT AUDIT-FILE           ASSIGN TO AUDIT.\nSELECT INVEHLN-FILE         ASSIGN TO INVEHLN.\nSELECT INCNTRY-FILE         ASSIGN TO INCNTRY.",
+          "is_file_call_required": false
+        }
+      ],
+      "data_division": [
+        {
+          "file_section": [
+            {
+              "type": "FileDescription",
+              "line": "29-32",
+              "syntax": "FD  AUDIT-FILE.\n01  AUDIT-RECORD.\n05  AUDIT-LABEL             PIC X(30).\n05  AUDIT-DATA              PIC X(50).",
+              "is_file_call_required": false
+            },
+            {
+              "type": "FileDescription",
+              "line": "33-34",
+              "syntax": "FD  INVEHLN-FILE.\n01  INVEHLN-REC                 PIC X(80).",
+              "is_file_call_required": false
+            },
+            {
+              "type": "FileDescription",
+              "line": "35-38",
+              "syntax": "FD  INCNTRY-FILE.\n01  INCNTRY-REC                 PIC X(80).\n/*****************************************************************\n*                 W O R K I N G   S T O R A G E                  *",
+              "is_file_call_required": false
+            }
+          ]
+        },
+        {
+          "working_storage_section": [
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "40-64",
+              "syntax": "77  PAN-VALET PICTURE X(24) VALUE \"002PEXWWB915 10/30/12\".\nCOPY CPESDB2.\n*- SQLCA AND SQLCODES\nCOPY CPESIMSB.\n*- IMS FUNCTIONS AND STATUS CODES\nCOPY CPESGNTB.\n*- GENERIC TABLE LAYOUTS - SYSTEM\nCOPY CPEWGNTB.\n*- GENERIC TABLE LAYOUTS - GEVIS\nCOPY CPESEBWS.\n*- BMPSHELL WORKING STORAGE\n*COPY CPESSDTE.\n*- SUBROUTINE WS - EXSESDTE\n*COPY CPESSMSG.\n*- SUBROUTINE WS - EXSESMSG\nCOPY CPESD016.\n*- DCLGEN - MEXS016_GENERIC2\nCOPY CPEWD046.\n*- DCLGEN - MEXW046_NAV_INV_VIN\nCOPY CPEWD047.\n*- DCLGEN - MEXW047_NAO_INV_OPT\n/*****************************************************************\n* RECORD DESCRIPTIONS FOR GSAM FILES                             *\n* INPUT INTERFACE TRANSACTIONS\nCOPY CPEWIIDR.",
+              "is_file_call_required": true,
+              "file_dependencies": [
+                {
+                  "line": "40-64",
+                  "file_name": "CPESDB2"
+                },
+                {
+                  "line": "40-64",
+                  "file_name": "CPESIMSB"
+                },
+                {
+                  "line": "40-64",
+                  "file_name": "CPESGNTB"
+                },
+                {
+                  "line": "40-64",
+                  "file_name": "CPEWGNTB"
+                },
+                {
+                  "line": "40-64",
+                  "file_name": "CPESEBWS"
+                },
+                {
+                  "line": "40-64",
+                  "file_name": "CPESD016"
+                },
+                {
+                  "line": "40-64",
+                  "file_name": "CPEWD046"
+                },
+                {
+                  "line": "40-64",
+                  "file_name": "CPEWD047"
+                },
+                {
+                  "line": "40-64",
+                  "file_name": "CPEWIIDR"
+                }
+              ]
+            },
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "65-68",
+              "syntax": "01  CHKP-SAVE-AREA.\n05  CHKP-SAVE                     PIC  X(1000).\n/*****************************************************************\n* INTERNAL TABLES FOR VEHICLE LINE AND COUNTRY                   *",
+              "is_file_call_required": false
+            },
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "69-74",
+              "syntax": "01  WS-INCLUDED-VEHICLE-LINES.\n05  V-VL-TBL-ID                   PIC X(08) VALUE \"VEH LINE\".\n05  INCL-VEH-LN-TBLE              OCCURS 20.\n10  INCL-VEH-LN-DATA          PIC X(02)  VALUE SPACES.\n05  WS-INVEHLN-ROW-MAX            PIC S9(4)  COMP VALUE +20.\n05  INVEHLN-X                     PIC S9(4)  COMP.",
+              "is_file_call_required": false
+            },
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "75-77",
+              "syntax": "01  WS-INVOICE-VL.\n05  INV-VL-CD                     PIC X(02).\n05  FILLER                        PIC X(78)  VALUE SPACES.",
+              "is_file_call_required": false
+            },
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "78-84",
+              "syntax": "01  WS-INCLUDED-COUNTRY.\n05  V-CNTRY-TBL-ID                PIC X(08) VALUE \"COUNTRY \".\n05  INCL-CNTRY-TBLE               OCCURS 20.\n10  INCL-DLR-CNTRY-CD         PIC X(01)  VALUE SPACES.\n10  INCL-CNTRY-CD             PIC X(03)  VALUE SPACES.\n05  WS-INCNTRY-ROW-MAX            PIC S9(4)  COMP VALUE +20.\n05  INCNTRY-X                     PIC S9(4)  COMP.",
+              "is_file_call_required": false
+            },
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "85-89",
+              "syntax": "01  WS-SOLD-TO-DLR-CTRY.\n05  SLD-TO-DLR-CTRY-CD            PIC X(01).\n05  FILLER                        PIC X(01)  VALUE SPACES.\n05  SLD-TO-DLR-ISO-CTRY-CD        PIC X(03).\n05  FILLER                        PIC X(01)  VALUE SPACES.",
+              "is_file_call_required": false
+            },
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "90-109",
+              "syntax": "01  ERROR-RECORD.\n05  ERROR-VIN                     PIC X(17) VALUE SPACES.\n05  FILLER                        PIC X(01) VALUE SPACES.\n05  ERROR-MESSAGE.\n10  ERROR-MESSAGE-1           PIC X(50) VALUE SPACES.\n10  ERROR-MESSAGE-2           PIC X(38) VALUE SPACES.\n05  ERROR-VALUE                   PIC X(34) VALUE SPACES.\n05  ERROR-HEADER-DATA             REDEFINES ERROR-VALUE.\n10  ERROR-FILE-TYPE           PIC X(01).\n10  ERROR-DATA-SRC            PIC X(02).\n10  ERROR-BATCH-DT            PIC X(10).\n10  FILLER                    PIC X(21).\n05  ERROR-SORT-FIELDS.\n10  ERROR-PROD-SYS           PIC X(02) VALUE SPACES.\n10  ERROR-BATCH-NBR          PIC 9(05) VALUE ZEROES.\n10  ERROR-SORT-BYTE          PIC X(01) VALUE SPACES.\n05  ERROR-PROD-SRC               PIC X(02) VALUE SPACES.\n05  ERROR-FILLER                 PIC X(35) VALUE SPACES.\n/*****************************************************************\n* PROGRAM LITERALS                                               *",
+              "is_file_call_required": false
+            },
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "110-139",
+              "syntax": "01  PROGRAM-LITERALS.\n05  PL-PGM-NAME             PIC X(08) VALUE \"EXWWB915\".\n05  PL-SYSTEM-CD            PIC X(04) VALUE \"EXWW\".\n05  PL-TABLE-ID             PIC X(07) VALUE \"MODELYR\".\n05  PL-BATCHCTL             PIC X(08) VALUE \"INVDATA \".\n05  PL-F                    PIC X(01) VALUE \"F\".\n05  PL-C                    PIC X(01) VALUE \"C\".\n05  PL-Y                    PIC X(01) VALUE \"Y\".\n05  PL-FOUR-ZEROS           PIC X(04) VALUE \"0000\".\n05  PL-0410P                PIC X(05) VALUE \"0410P\".\n05  PL-OPT                  PIC X(03) VALUE \"OPT\".\n05  PL-EXTERIOR             PIC X(10) VALUE \". EXTERIOR\".\n05  PL-EXTERIOR-2           PIC X(08) VALUE \"EXTERIOR\".\n05  PL-INTERIOR             PIC X(10) VALUE \". INTERIOR\".\n05  PL-INTERIOR-2           PIC X(08) VALUE \"INTERIOR\".\n05  PL-FUNCTIONAL           PIC X(12) VALUE \". FUNCTIONAL\".\n05  PL-FUNCTIONAL-2         PIC X(10) VALUE \"FUNCTIONAL\".\n05  PL-SAFETY               PIC X(17) VALUE\n\". SAFETY/SECURITY\".\n05  PL-SAFETY-2             PIC X(15) VALUE\n\"SAFETY/SECURITY\".\n05  PL-WARRANTY             PIC X(10) VALUE \". WARRANTY\".\n05  PL-RAPID-SPEC-HEADER    PIC X(17) VALUE\n\"RAPID SPEC HEADER\".\n05  PL-CHAR-ALPHABETIC-UPPER    PIC X(26)\nVALUE \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\".\n05  PL-CHAR-ALPHABETIC-LOWER    PIC X(26)\nVALUE \"abcdefghijklmnopqrstuvwxyz\".\n/*****************************************************************\n* PROGRAM MESSAGES                                               *",
+              "is_file_call_required": false
+            },
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "140-184",
+              "syntax": "01  PROGRAM-MESSAGES.\n05  MSG-HEADER-BAD                           PIC X(50) VALUE\n\"HEADER FOUND WHEN TRAILER EXPECTED                \".\n05  MSG-HEADER-NONE                          PIC X(50) VALUE\n\"FIRST RECORD IS NOT HEADER                        \".\n05  MSG-TRAILER-BAD                          PIC X(50) VALUE\n\"TRAILER DATA DOES NOT MATCH HEADER DATA           \".\n05  MSG-TRAILER-MISSING                      PIC X(50) VALUE\n\"TRAILER RECORD IS MISSING                         \".\n05  MSG-TRAILER-NONE                         PIC X(50) VALUE\n\"LAST RECORD IS NOT TRAILER                        \".\n05  MSG-HDR-PROD-SYS-2                       PIC X(50) VALUE\n\"HEADER PROD SYSTEM IS NOT IN SYSPARM TABLE        \".\n05  MSG-HDR-BATCH-DT-1                       PIC X(50) VALUE\n\"HEADER BATCH DATE IS NOT VALID                    \".\n05  MSG-HDR-BATCH-NBR-1                      PIC X(50) VALUE\n\"HEADER BATCH NUMBER IS NOT NUMERIC                \".\n05  MSG-HDR-BATCH-NBR-2                      PIC X(50) VALUE\n\"HEADER BATCH NUMBER DOES NOT MATCH SYSPARM        \".\n05  MSG-TRL-NBR-RECS                         PIC X(50) VALUE\n\"TRAILER RECORD COUNT DOESN'T MATCH BATCH COUNT    \".\n05  MSG-TRL-NBR-RECS-2                       PIC X(50) VALUE\n\"TRAILER RECORD COUNT DOESN'T MATCH ADD/UPD COUNT  \".\n05  MSG-TBL-CNT                              PIC X(50) VALUE\n\"TABLE COUNT > MAX ALLOWED                         \".\n05  MSG-VIN-SPACES-OR-HIGH-VALUES            PIC X(50) VALUE\n\"VIN IS SPACES OR HIGH VALUES                      \".\n05  MSG-VIN-CONTAINS-SPACES                  PIC X(50) VALUE\n\"VIN CONTAINS SPACES                               \".\n05  MSG-VIN-CONTAINS-SPEC-CHARS              PIC X(50) VALUE\n\"VIN CONTAINS SPECIAL CHARACTERS                   \".\n05  MSG-MKT-MDL-YR-NOT-FOUND                 PIC X(50) VALUE\n\"MARKET MODEL YEAR NOT FOUND ON MEXS016            \".\n05  MSG-MEXS016-SYSPARM                      PIC X(50) VALUE\n\"MISSING MEXS016 SYSPARM REC                       \".\n05  MSG-INPUT-FILE-IS-EMPTY                  PIC X(50) VALUE\n\"INPUT FILE IS EMPTY                               \".\n05  MSG-VEH-LINE-NOT-FOUND                   PIC X(50) VALUE\n\"VEHICLE LINE NOT FOUND                            \".\n05  MSG-COUNTRY-NOT-FOUND                    PIC X(50) VALUE\n\"COUNTRY CODE NOT FOUND                            \".\n05  MSG-DIV-NOT-FOUND                        PIC X(50) VALUE\n\"DIVISION NOT FOUND                                \".\n/*****************************************************************\n* PROGRAM SWITCHES                                               *",
+              "is_file_call_required": false
+            },
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "185-204",
+              "syntax": "01  PROGRAM-SWITCHES.\n05  PS-INPUT-EOF-SW             PIC X(01).\n88 INPUT-EOF                VALUE \"Y\".\n05  PS-HEADER-TRAILER           PIC X(01).\n88 HEADER-NEEDED            VALUE \"H\".\n88 TRAILER-NEEDED           VALUE \"T\".\n05  PS-VEHLN-SW                 PIC X(01).\n88 VEHLN-FOUND              VALUE \"Y\".\n05  PS-ERROR-SW                 PIC X(01).\n88 ERROR-FOUND              VALUE \"Y\".\n88 ERROR-NOT-FOUND          VALUE \"N\".\n05  PS-SEND-EMAIL               PIC X(01).\n88 SEND-EMAIL               VALUE \"Y\".\n88 NOT-SEND-EMAIL           VALUE \"N\".\n05  PS-INVEHLN-EOF-SW           PIC X(01).\n88 INVEHLN-EOF              VALUE \"Y\".\n05  PS-INCNTRY-EOF-SW           PIC X(01).\n88 INCNTRY-EOF              VALUE \"Y\".\n/*****************************************************************\n* PROGRAM VARIABLES                                              *",
+              "is_file_call_required": false
+            },
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "205-244",
+              "syntax": "01  PROGRAM-VARIABLES.\n05  PV-INPUT-REC-CNT              PIC S9(6) COMP VALUE +0.\n05  PV-INS-UPD-REC-CNT            PIC S9(6) COMP VALUE +0.\n05  PV-BYPASS-REC-CNT             PIC S9(6) COMP VALUE +0.\n05  PV-CURR-DATE.\n10  PV-CURR-DT-CC             PIC X(02).\n10  PV-CURR-DT-YY             PIC X(02).\n10  FILLER                    PIC X(01) VALUE \"-\".\n10  PV-CURR-DT-MM             PIC X(02).\n10  FILLER                    PIC X(01) VALUE \"-\".\n10  PV-CURR-DT-DD             PIC X(02).\n05  PV-COMP-DATE.\n10  PV-COMP-DT-CC             PIC X(02).\n10  PV-COMP-DT-YY             PIC X(02).\n10  FILLER                    PIC X(01) VALUE \"-\".\n10  PV-COMP-DT-MM             PIC X(02) VALUE \"01\".\n10  FILLER                    PIC X(01) VALUE \"-\".\n10  PV-COMP-DT-DD             PIC X(02) VALUE \"01\".\n05  PV-INVDATA-CNTL-CUR-BATCH     PIC X(05) VALUE SPACES.\n05  PV-INVDATA-CNTL-CUR-BATCH-NUM REDEFINES\nPV-INVDATA-CNTL-CUR-BATCH  PIC 9(05).\n05  PV-HDR-BATCH-NBR              PIC 9(05).\n05  PV-BATCH-NBR                  PIC 9(05).\n05  PV-BATCH-DT                   PIC X(10).\n05  PV-COUNT-BATCH                PIC S9(9) COMP.\n05  PV-ERROR-BATCH                PIC 9(05).\n05  PV-ATTRIBUTE-DATA             PIC 9(05).\n05  PV-VIN-SPACE-COUNT            PIC S9(04) USAGE COMP.\n05  PV-VIN-SP-CHAR-COUNT          PIC S9(04) USAGE COMP.\n05  PV-VIN-SUB                    PIC 9(02)  USAGE COMP.\n05  PV-17-CHAR-VIN                PIC X(17)  VALUE SPACES.\n05  PV-VIN-CHAR-POSITION REDEFINES PV-17-CHAR-VIN\nOCCURS 17 TIMES               PIC X(01).\n05  PV-EXWWB915-SYSPARM-BATCHCTL.\n10  PV-EXWWB915-CURR-BATCH-NO PIC 9(05).\n05  PV-MODEL-YEAR.\n10  PV-MDL-YR                 PIC X(50)  VALUE SPACES.\n05  PV-INT-MODEL-YEAR    REDEFINES PV-MODEL-YEAR.\n10  PV-INT-MDL-YR             PIC 9(04).\n10  FILLER                    PIC X(46).",
+              "is_file_call_required": false
+            },
+            {
+              "type": "WorkingStorageDataDescription",
+              "line": "245-267",
+              "syntax": "01  INVDATA.\n05  INVDATA-RECORD                PIC X(10000) VALUE SPACES.\n05  INVDATA-HEADER-INV REDEFINES INVDATA-RECORD.\n10  FILLER                     PIC X(17).\n10  INVDATA-HD-HEADER-INV      PIC X(03).\n88  INV-HEADER-RECORD      VALUE \"HDR\".\n10  INVDATA-HDR-ID             PIC X(08).\n10  INVDATA-HDR-CURR-BATCH     PIC 9(05).\n10  INVDATA-HDR-PREV-BATCH     PIC 9(05).\n10  INVDATA-HDR-CURR-DATE      PIC X(06).\n10  INVDATA-HDR-PREV-DATE      PIC X(06).\n10  FILLER                     PIC X(9950).\n05  INVDATA-TRAILER-INV REDEFINES INVDATA-RECORD.\n10  FILLER                     PIC X(17).\n10  INVDATA-TL-TRAILER-INV     PIC X(03).\n88  INV-TRAILER-RECORD     VALUE \"TRL\".\n10  INVDATA-TLR-ID             PIC X(08).\n10  INVDATA-TLR-CURR-BATCH     PIC 9(05).\n10  FILLER                     PIC X(05).\n10  INVDATA-TLR-CNT            PIC 9(08).\n10  FILLER                     PIC X(9954).\n/*****************************************************************\n*                 L I N K A G E   S E C T I O N                  *",
+              "is_file_call_required": false
+            }
+          ]
+        },
+        {
+          "linkage_section": [
+            {
+              "line": "268-287",
+              "type": "LinkageDescription",
+              "syntax": "LINKAGE SECTION.\n01  IO-PCB.\n05  IO-PCB-LTERM                   PIC X(08).\n05  FILLER                         PIC X(02).\n05  IO-PCB-STATUS                  PIC X(02).\n05  FILLER                         PIC X(28).\n01  INVDATA-IN-PCB.\n05  INVDATA-IN-PCB-NAME            PIC X(08)\nVALUE \"MDEXG100\".\n05  FILLER                         PIC X(02).\n05  INVDATA-IN-PCB-STATUS          PIC X(02).\n05  FILLER                         PIC X(28).\n01  ERROR-PCB.\n05  ERROR-PCB-NAME                 PIC X(08)\nVALUE \"MDEXG101\".\n05  FILLER                         PIC X(02).\n05  ERROR-PCB-STATUS               PIC X(02).\n05  FILLER                         PIC X(28).\n/*****************************************************************\n*              P R O C E D U R E   D I V I S I O N               *",
+              "is_file_call_required": false
+            }
+          ]
+        }
+      ],
+      "procedure_division": [
+        {
+          "line": "289-289",
+          "type": "Paragraph",
+          "syntax": "*                        M A I N L I N E                         *",
+          "is_function_call_required": false,
+          "is_file_call_required": false
+        },
+        {
+          "line": "290-307",
+          "type": "Paragraph",
+          "syntax": "0000P-MAINLINE.\nENTRY \"DLITCBL\" USING IO-PCB\nINVDATA-IN-PCB\nERROR-PCB\nPERFORM 0100I-INITIALIZATION\nPERFORM 0500P-LOAD-INVEHLN\nPERFORM 0550P-LOAD-INCNTRY\nPERFORM 1000P-PROCESS-TRANSACTION UNTIL INPUT-EOF\nPERFORM 0200I-CONCLUSION\nIF SEND-EMAIL\nMOVE +3 TO RETURN-CODE\nEND-IF\nGOBACK\n.\nCOPY CPESEBIC.\n*- BMPSHELL INITIALIZATION AND CONCLUSION\n/*****************************************************************\n* INITIALIZE THE CHECKPOINT SAVE AREA                            *",
+          "paragraph_name": "0000P-MAINLINE",
+          "is_function_call_required": true,
+          "is_file_call_required": true,
+          "function_dependencies": [
+            "0100I-INITIALIZATION",
+            "0500P-LOAD-INVEHLN",
+            "0550P-LOAD-INCNTRY",
+            "1000P-PROCESS-TRANSACTION",
+            "0200I-CONCLUSION"
+          ],
+          "file_dependencies": [
+            {
+              "line": "304",
+              "file_name": "CPESEBIC"
+            }
+          ]
+        },
+        {
+          "line": "308-312",
+          "type": "Paragraph",
+          "syntax": "0300P-INITIALIZE-SAVE-AREA.\nCONTINUE\n.\n/*****************************************************************\n* INITIALIZE THE REPORT TITLES.                                  *",
+          "paragraph_name": "0300P-INITIALIZE-SAVE-AREA",
+          "is_function_call_required": false,
+          "is_file_call_required": false
+        },
+        {
+          "line": "313-317",
+          "type": "Paragraph",
+          "syntax": "0350P-INITIALIZE-REPORT-TITLES.\nCONTINUE\n.\n/*****************************************************************\n* PROGRAM SPECIFIC INITIALIZATION                                *",
+          "paragraph_name": "0350P-INITIALIZE-REPORT-TITLES",
+          "is_function_call_required": false,
+          "is_file_call_required": false
+        },
+        {
+          "line": "318-331",
+          "type": "Paragraph",
+          "syntax": "0400P-INITIALIZE-OTHER.\nINITIALIZE PROGRAM-SWITCHES\nPERFORM 0410P-SELECT-SYSPARM-BATCHCTL\nPERFORM 5000P-GET-NEXT-INPUT-RECORD\nIF SC-IMS-STAT-END-OF-DB\nAND PV-COUNT-BATCH = ZERO\nMOVE MSG-INPUT-FILE-IS-EMPTY\nTO ERROR-MESSAGE-1\nPERFORM 7000P-WRITE-ERROR-RECORD\nSET SEND-EMAIL      TO TRUE\nEND-IF\n.\n/*****************************************************************\n* FETCH THE BATCH NUMBERS FROM THE GENERIC SYSTEM PARM TABLE.    *",
+          "paragraph_name": "0400P-INITIALIZE-OTHER",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "0410P-SELECT-SYSPARM-BATCHCTL",
+            "5000P-GET-NEXT-INPUT-RECORD",
+            "7000P-WRITE-ERROR-RECORD"
+          ]
+        },
+        {
+          "line": "332-354",
+          "type": "Paragraph",
+          "syntax": "0410P-SELECT-SYSPARM-BATCHCTL.\nMOVE PL-SYSTEM-CD           TO GNT-SYSTEM-CD\nMOVE SYSPARM-TBL-ID         TO GNT-TABLE-ID\nMOVE PL-PGM-NAME            TO SYSPARM-KEY-SYP-PGM-NAME\nMOVE PL-BATCHCTL            TO SYSPARM-KEY-SYP-PARM-ID\nMOVE SYSPARM-KEY            TO GNT-KEY-DATA\nMOVE SL-YES                 TO GNT-SW-ACTIVE\nPERFORM 9200I-SELECT-MEXS016-GENERIC2\nIF MEXS016-NOT-FOUND\nMOVE MSG-MEXS016-SYSPARM\nTO ABEND-MSG\nMOVE PL-0410P            TO ABEND-PARAGRAPH\nPERFORM 9999I-ABEND\nEND-IF\nMOVE GNT-ATTRIBUTE-DATA     TO PV-EXWWB915-SYSPARM-BATCHCTL\nMOVE PV-EXWWB915-CURR-BATCH-NO\nTO PV-INVDATA-CNTL-CUR-BATCH\nMOVE SPACES                 TO AUDIT-RECORD\nWRITE AUDIT-RECORD\nADD +1                      TO PV-EXWWB915-CURR-BATCH-NO\n.\n/*****************************************************************\n* LOAD INVOICING SYSTEM VEHICLE LINE.                            *",
+          "paragraph_name": "0410P-SELECT-SYSPARM-BATCHCTL",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "9200I-SELECT-MEXS016-GENERIC2",
+            "9999I-ABEND"
+          ]
+        },
+        {
+          "line": "355-380",
+          "type": "Paragraph",
+          "syntax": "0500P-LOAD-INVEHLN.\nINITIALIZE INVEHLN-X\nINITIALIZE PS-INVEHLN-EOF-SW\nOPEN INPUT INVEHLN-FILE\nPERFORM UNTIL INVEHLN-EOF\nREAD INVEHLN-FILE              INTO WS-INVOICE-VL\nAT END SET INVEHLN-EOF         TO TRUE\nEND-READ\nIF INVEHLN-EOF\nCONTINUE\nELSE\nADD +1 TO INVEHLN-X\nIF INVEHLN-X > WS-INVEHLN-ROW-MAX\nSTRING MSG-TBL-CNT\n\"TBL= \" V-VL-TBL-ID\nDELIMITED BY SIZE INTO ABEND-MSG\nMOVE \"0500P\"               TO ABEND-PARAGRAPH\nPERFORM 9999I-ABEND\nEND-IF\nMOVE INV-VL-CD        TO INCL-VEH-LN-DATA(INVEHLN-X)\nEND-IF\nEND-PERFORM\nCLOSE INVEHLN-FILE\n.\n/*****************************************************************\n* LOAD INVOICING SYSTEM COUNTRY.                                 *",
+          "paragraph_name": "0500P-LOAD-INVEHLN",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "9999I-ABEND"
+          ]
+        },
+        {
+          "line": "381-409",
+          "type": "Paragraph",
+          "syntax": "0550P-LOAD-INCNTRY.\nINITIALIZE INCNTRY-X\nINITIALIZE PS-INCNTRY-EOF-SW\nOPEN INPUT INCNTRY-FILE\nPERFORM UNTIL INCNTRY-EOF\nREAD INCNTRY-FILE               INTO WS-SOLD-TO-DLR-CTRY\nAT END SET INCNTRY-EOF          TO TRUE\nEND-READ\nIF INCNTRY-EOF\nCONTINUE\nELSE\nADD +1                         TO INCNTRY-X\nIF INCNTRY-X > WS-INCNTRY-ROW-MAX\nSTRING MSG-TBL-CNT\n\"TBL= \" V-CNTRY-TBL-ID\nDELIMITED BY SIZE INTO ABEND-MSG\nMOVE \"0550P\"               TO ABEND-PARAGRAPH\nPERFORM 9999I-ABEND\nEND-IF\nMOVE SLD-TO-DLR-CTRY-CD        TO\nINCL-DLR-CNTRY-CD (INCNTRY-X)\nMOVE SLD-TO-DLR-ISO-CTRY-CD    TO\nINCL-CNTRY-CD (INCNTRY-X)\nEND-IF\nEND-PERFORM\nCLOSE INCNTRY-FILE\n.\n/*****************************************************************\n* PROGRAM SPECIFIC CONCLUSION                                    *",
+          "paragraph_name": "0550P-LOAD-INCNTRY",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "9999I-ABEND"
+          ]
+        },
+        {
+          "line": "410-413",
+          "type": "Paragraph",
+          "syntax": "0700P-CONCLUDE-OTHER.\n.\n/*****************************************************************\n* PROGRAM SPECIFIC PROCESSING.                                   *",
+          "paragraph_name": "0700P-CONCLUDE-OTHER",
+          "is_function_call_required": false,
+          "is_file_call_required": false
+        },
+        {
+          "line": "414-449",
+          "type": "Paragraph",
+          "syntax": "1000P-PROCESS-TRANSACTION.\nADD +1 TO PV-INPUT-REC-CNT\nEVALUATE TRUE\nWHEN HEADER-NEEDED\nAND  NOT INV-HEADER-RECORD\nMOVE MSG-HEADER-NONE   TO ABEND-MSG\nMOVE \"1000P\"           TO ABEND-PARAGRAPH\nPERFORM 8000P-WRITE-AUDIT-DETAIL\nPERFORM 9999I-ABEND\nWHEN TRAILER-NEEDED\nAND  INV-HEADER-RECORD\nMOVE MSG-HEADER-BAD    TO ABEND-MSG\nMOVE \"1000P\"           TO ABEND-PARAGRAPH\nPERFORM 8000P-WRITE-AUDIT-DETAIL\nPERFORM 9999I-ABEND\nWHEN INV-HEADER-RECORD\nPERFORM 1100P-PROCESS-HEADER-RECORD\nSET TRAILER-NEEDED     TO TRUE\nWHEN INV-TRAILER-RECORD\nPERFORM 1200P-PROCESS-TRAILER-RECORD\nSET HEADER-NEEDED      TO TRUE\nWHEN OTHER\nPERFORM 2000P-PROCESS-OTHER-TRANS\nEND-EVALUATE\nPERFORM 9400I-INCREMENT-CHKP-COUNT\nPERFORM 5000P-GET-NEXT-INPUT-RECORD\nIF SC-IMS-STAT-END-OF-DB\nAND TRAILER-NEEDED\nMOVE MSG-TRAILER-MISSING TO ABEND-MSG\nMOVE \"1000P\"             TO ABEND-PARAGRAPH\nPERFORM 8000P-WRITE-AUDIT-DETAIL\nPERFORM 9999I-ABEND\nEND-IF\n.\n/*****************************************************************\n* PROCESS HEADER RECORD                                          *",
+          "paragraph_name": "1000P-PROCESS-TRANSACTION",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "8000P-WRITE-AUDIT-DETAIL",
+            "9999I-ABEND",
+            "1100P-PROCESS-HEADER-RECORD",
+            "1200P-PROCESS-TRAILER-RECORD",
+            "2000P-PROCESS-OTHER-TRANS",
+            "9400I-INCREMENT-CHKP-COUNT",
+            "5000P-GET-NEXT-INPUT-RECORD"
+          ]
+        },
+        {
+          "line": "450-455",
+          "type": "Paragraph",
+          "syntax": "1100P-PROCESS-HEADER-RECORD.\nPERFORM 1120P-EDIT-PROD-SYSTEM\nPERFORM 1130P-EDIT-BATCH-NUMBER\n.\n/*****************************************************************\n* EDIT PROD SYSTEM                                               *",
+          "paragraph_name": "1100P-PROCESS-HEADER-RECORD",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "1120P-EDIT-PROD-SYSTEM",
+            "1130P-EDIT-BATCH-NUMBER"
+          ]
+        },
+        {
+          "line": "456-476",
+          "type": "Paragraph",
+          "syntax": "1120P-EDIT-PROD-SYSTEM.\nMOVE SL-SYSTEM-CD-EXWW      TO GNT-SYSTEM-CD\nMOVE SYSPARM-TBL-ID         TO GNT-TABLE-ID\nMOVE PL-PGM-NAME            TO SYSPARM-KEY-SYP-PGM-NAME\nMOVE PL-BATCHCTL            TO SYSPARM-KEY-SYP-PARM-ID\nMOVE SYSPARM-KEY            TO GNT-KEY-DATA\nMOVE SL-YES                 TO GNT-SW-ACTIVE\nPERFORM 9200I-SELECT-MEXS016-GENERIC2\nIF  MEXS016-FOUND\nMOVE GNT-ATTRIBUTE-DATA (1:5)\nTO PV-HDR-BATCH-NBR\nELSE\nMOVE MSG-HDR-PROD-SYS-2\nTO ABEND-MSG\nMOVE \"1120P\"           TO ABEND-PARAGRAPH\nPERFORM 8000P-WRITE-AUDIT-DETAIL\nPERFORM 9999I-ABEND\nEND-IF\n.\n/*****************************************************************\n* EDIT BATCH NUMBER                                              *",
+          "paragraph_name": "1120P-EDIT-PROD-SYSTEM",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "9200I-SELECT-MEXS016-GENERIC2",
+            "8000P-WRITE-AUDIT-DETAIL",
+            "9999I-ABEND"
+          ]
+        },
+        {
+          "line": "477-501",
+          "type": "Paragraph",
+          "syntax": "1130P-EDIT-BATCH-NUMBER.\nEVALUATE TRUE\nWHEN INVDATA-HDR-CURR-BATCH NOT NUMERIC\nMOVE MSG-HDR-BATCH-NBR-1  TO ABEND-MSG\nMOVE \"1130P\"              TO ABEND-PARAGRAPH\nPERFORM 8000P-WRITE-AUDIT-DETAIL\nPERFORM 9999I-ABEND\nWHEN INVDATA-HDR-CURR-BATCH NOT = PV-HDR-BATCH-NBR\nMOVE MSG-HDR-BATCH-NBR-2  TO ABEND-MSG\nMOVE \"1130P\"              TO ABEND-PARAGRAPH\nPERFORM 8000P-WRITE-AUDIT-DETAIL\nPERFORM 9999I-ABEND\nWHEN INVDATA-HDR-CURR-BATCH = PV-HDR-BATCH-NBR\nMOVE \"SYSPARM INPUT BATCH NUMBER :\"\nTO AUDIT-LABEL\nMOVE INVDATA-HDR-CURR-BATCH\nTO AUDIT-DATA\nWRITE AUDIT-RECORD\nMOVE INVDATA-HDR-CURR-BATCH\nTO PV-BATCH-NBR\nMOVE INVDATA-HDR-CURR-DATE TO PV-BATCH-DT\nEND-EVALUATE\n.\n/*****************************************************************\n* PROCESS TRAILER RECORD                                         *",
+          "paragraph_name": "1130P-EDIT-BATCH-NUMBER",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "8000P-WRITE-AUDIT-DETAIL",
+            "9999I-ABEND"
+          ]
+        },
+        {
+          "line": "502-551",
+          "type": "Paragraph",
+          "syntax": "1200P-PROCESS-TRAILER-RECORD.\nIF  INVDATA-TLR-CURR-BATCH NOT = PV-HDR-BATCH-NBR\nMOVE MSG-TRAILER-BAD           TO ABEND-MSG\nMOVE \"1200P\"                   TO ABEND-PARAGRAPH\nPERFORM 8000P-WRITE-AUDIT-DETAIL\nPERFORM 9999I-ABEND\nEND-IF\nIF  INVDATA-TLR-CNT + 2 = PV-COUNT-BATCH\nMOVE ZERO                      TO PV-COUNT-BATCH\nELSE\nMOVE MSG-TRL-NBR-RECS          TO ABEND-MSG\nMOVE \"1200P\"                   TO ABEND-PARAGRAPH\nPERFORM 8000P-WRITE-AUDIT-DETAIL\nPERFORM 9999I-ABEND\nEND-IF\nIF  PV-BYPASS-REC-CNT + PV-INS-UPD-REC-CNT =\nINVDATA-TLR-CNT\nMOVE \"TOTAL INSERTED OR UPDATED  : \"\nTO AUDIT-LABEL\nMOVE PV-INS-UPD-REC-CNT    TO AUDIT-DATA\nWRITE AUDIT-RECORD\nMOVE \"TOTAL RECS BYPASSED        : \"\nTO AUDIT-LABEL\nMOVE PV-BYPASS-REC-CNT     TO AUDIT-DATA\nWRITE AUDIT-RECORD\nMOVE SPACES                TO AUDIT-RECORD\nWRITE AUDIT-RECORD\nMOVE ZERO                  TO PV-BYPASS-REC-CNT\nMOVE ZERO                  TO PV-INS-UPD-REC-CNT\nELSE\nMOVE MSG-TRL-NBR-RECS-2        TO ABEND-MSG\nMOVE \"1200P\"                   TO ABEND-PARAGRAPH\nPERFORM 8000P-WRITE-AUDIT-DETAIL\nPERFORM 9999I-ABEND\nEND-IF\n****     UPDATE SYSPARM BATCH NBR\nMOVE PV-HDR-BATCH-NBR              TO PV-ATTRIBUTE-DATA\nADD +1                             TO PV-ATTRIBUTE-DATA\nMOVE SL-SYSTEM-CD-EXWW             TO GNT-SYSTEM-CD\nMOVE SYSPARM-TBL-ID                TO GNT-TABLE-ID\nMOVE PL-PGM-NAME                   TO\nSYSPARM-KEY-SYP-PGM-NAME\nMOVE PL-BATCHCTL                   TO\nSYSPARM-KEY-SYP-PARM-ID\nMOVE SYSPARM-KEY                   TO GNT-KEY-DATA\nMOVE PV-ATTRIBUTE-DATA             TO GNT-ATTRIBUTE-DATA\nPERFORM 9210I-UPDATE-MEXS016-GENERIC2\n.\n/*****************************************************************\n* PROCESS OTHER TRANS (DETAIL RECORD, NOT HEADER OR TRAILER)     *",
+          "paragraph_name": "1200P-PROCESS-TRAILER-RECORD",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "8000P-WRITE-AUDIT-DETAIL",
+            "9999I-ABEND",
+            "9210I-UPDATE-MEXS016-GENERIC2"
+          ]
+        },
+        {
+          "line": "552-576",
+          "type": "Paragraph",
+          "syntax": "2000P-PROCESS-OTHER-TRANS.\nINITIALIZE PS-ERROR-SW\nINITIALIZE ERROR-RECORD\nPERFORM 2100P-EDIT-VIN\nPERFORM 2200P-SEARCH-VL-TABLE\nIF VEHLN-FOUND\nAND ERROR-NOT-FOUND\nIF  (IDR-SLD-DC-DIV = PL-F\nOR   IDR-SLD-DC-DIV = PL-C)\nPERFORM 2300P-MOVE-MEXW046\nELSE\nADD +1                      TO PV-BYPASS-REC-CNT\nMOVE IDR-VIN                TO ERROR-VIN\nMOVE MSG-DIV-NOT-FOUND\nTO ERROR-MESSAGE-1\nMOVE PV-BATCH-DT            TO ERROR-BATCH-DT\nMOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR\nPERFORM 7000P-WRITE-ERROR-RECORD\nEND-IF\nELSE\nADD +1                      TO PV-BYPASS-REC-CNT\nEND-IF\n.\n/*****************************************************************\n* VIN CANNOT BE SPACES OR HIGH VALUES.  RECORD WILL BE BYPASSED. *",
+          "paragraph_name": "2000P-PROCESS-OTHER-TRANS",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "2100P-EDIT-VIN",
+            "2200P-SEARCH-VL-TABLE",
+            "2300P-MOVE-MEXW046",
+            "7000P-WRITE-ERROR-RECORD"
+          ]
+        },
+        {
+          "line": "577-601",
+          "type": "Paragraph",
+          "syntax": "2100P-EDIT-VIN.\nIF IDR-VIN > SPACES\nAND IDR-VIN NOT = HIGH-VALUES\nINSPECT IDR-VIN CONVERTING\nPL-CHAR-ALPHABETIC-LOWER TO\nPL-CHAR-ALPHABETIC-UPPER\nPERFORM 2150P-VALIDATE-17-CHAR-VIN\nELSE\nMOVE IDR-VIN                   TO ERROR-VIN\nMOVE MSG-VIN-SPACES-OR-HIGH-VALUES\nTO ERROR-MESSAGE-1\nMOVE PV-BATCH-DT               TO ERROR-BATCH-DT\nMOVE PV-BATCH-NBR              TO ERROR-BATCH-NBR\nPERFORM 7000P-WRITE-ERROR-RECORD\nSET SEND-EMAIL                 TO TRUE\nSET ERROR-FOUND                TO TRUE\nEND-IF\nIF ERROR-FOUND\nCONTINUE\nELSE\nSET ERROR-NOT-FOUND             TO TRUE\nEND-IF\n.\n/*****************************************************************\n* VIN CANNOT BE SPACES OR HIGH VALUES. RECORD WILL BE BYPASSED.  *",
+          "paragraph_name": "2100P-EDIT-VIN",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "2150P-VALIDATE-17-CHAR-VIN",
+            "7000P-WRITE-ERROR-RECORD"
+          ]
+        },
+        {
+          "line": "602-633",
+          "type": "Paragraph",
+          "syntax": "2150P-VALIDATE-17-CHAR-VIN.\nMOVE ZERO                           TO PV-VIN-SPACE-COUNT\nINSPECT IDR-VIN TALLYING\nPV-VIN-SPACE-COUNT FOR ALL \" \"\nIF PV-VIN-SPACE-COUNT > 0\nMOVE IDR-VIN                    TO ERROR-VIN\nMOVE MSG-VIN-CONTAINS-SPACES    TO ERROR-MESSAGE-1\nMOVE PV-BATCH-DT                TO ERROR-BATCH-DT\nMOVE PV-BATCH-NBR               TO ERROR-BATCH-NBR\nPERFORM 7000P-WRITE-ERROR-RECORD\nSET SEND-EMAIL                  TO TRUE\nSET ERROR-FOUND                 TO TRUE\nELSE\nMOVE ZERO                       TO PV-VIN-SP-CHAR-COUNT\nINSPECT IDR-VIN TALLYING\nPV-VIN-SP-CHAR-COUNT FOR ALL\n'*' '(' ')' '!' '@' '�' '$' '#' '&' '+' '=' '{' '}'\n'�' '�' ':' ';' '/' '\\' '?' '>' '<' '%' '`' '_' '|'\nIF PV-VIN-SP-CHAR-COUNT > 0\nMOVE IDR-VIN                TO ERROR-VIN\nMOVE MSG-VIN-CONTAINS-SPEC-CHARS\nTO ERROR-MESSAGE-1\nMOVE PV-BATCH-DT            TO ERROR-BATCH-DT\nMOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR\nPERFORM 7000P-WRITE-ERROR-RECORD\nSET SEND-EMAIL              TO TRUE\nSET ERROR-FOUND             TO TRUE\nEND-IF\nEND-IF\n.\n/*****************************************************************\n* SEARCH VL TABLE.  IF VL NOT FOUND THE RECORD WILL BE BYPASSED. *",
+          "paragraph_name": "2150P-VALIDATE-17-CHAR-VIN",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "7000P-WRITE-ERROR-RECORD"
+          ]
+        },
+        {
+          "line": "634-654",
+          "type": "Paragraph",
+          "syntax": "2200P-SEARCH-VL-TABLE.\nINITIALIZE PS-VEHLN-SW\nPERFORM\nVARYING INVEHLN-X FROM +1 BY +1\nUNTIL IDR-INV-VEH-LINE =\nINCL-VEH-LN-DATA(INVEHLN-X)\nOR INVEHLN-X > WS-INVEHLN-ROW-MAX\nEND-PERFORM\nIF IDR-INV-VEH-LINE = INCL-VEH-LN-DATA(INVEHLN-X)\nSET VEHLN-FOUND TO TRUE\nELSE\nMOVE IDR-VIN                TO ERROR-VIN\nMOVE MSG-VEH-LINE-NOT-FOUND TO ERROR-MESSAGE-1\nMOVE IDR-INV-VEH-LINE       TO ERROR-MESSAGE-2\nMOVE PV-BATCH-DT            TO ERROR-BATCH-DT\nMOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR\nPERFORM 7000P-WRITE-ERROR-RECORD\nEND-IF\n.\n/*****************************************************************\n* MOVE INPUT DATA TO TABLE VARIBLES TO INSERT INTO MEXW046       *",
+          "paragraph_name": "2200P-SEARCH-VL-TABLE",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "7000P-WRITE-ERROR-RECORD"
+          ]
+        },
+        {
+          "line": "655-696",
+          "type": "Paragraph",
+          "syntax": "2300P-MOVE-MEXW046.\nMOVE IDR-VIN                  TO NAV-VIN-C,\nNAO-VIN-C\nMOVE IDR-DLR-VEH-DESC         TO NAV-DLR-VEH-X\nMOVE IDR-INV-VEH-LINE         TO NAV-INV-VL-C\nMOVE IDR-EXT-COLOR            TO NAV-EXT-CLR-N\nMOVE IDR-INT-COLOR            TO NAV-INT-CLR-N\nMOVE IDR-BODY-CD              TO NAV-BODY-C\nMOVE IDR-PEP-CD               TO NAV-PEP-C\nPERFORM 2400P-GET-MKT-MDL-YR\nMOVE IDR-SLD-DLR-CODE         TO NAV-SLD-TO-DLR-C\nMOVE IDR-SLD-PA-CODE          TO NAV-PA-DLR-C\nMOVE IDR-FTC-DLR              TO NAV-FTC-DLR-C\nMOVE IDR-INVOICE-TYPE         TO NAV-INV-TYPE-C\nMOVE IDR-PRICE-LEVEL          TO NAV-PRICE-LVL-C\nMOVE IDR-BASE-VEH-AMT         TO NAV-BASE-VEH-A\nMOVE IDR-BASE-DLR-PRICE       TO NAV-BASE-DLR-PRICE-A\nMOVE IDR-BASE-UNIT-ADJ-MEMO   TO NAV-BASE-UNIT-ADJ-MEMO-A\nMOVE IDR-OPT-TOT-DLR          TO NAV-TOT-DLR-OPTS-A\nMOVE IDR-OPT-ADJ-MEMO         TO NAV-OPT-ADJ-MEMO-A\nMOVE IDR-DEST-DELIV-CHG       TO NAV-DEST-DELIV-CHG-A\nPERFORM 2500P-MOVE-DISCOUNT-AMTS\nMOVE IDR-OPT-HLDBK            TO NAV-OPT-HOLDBACK-A\nMOVE IDR-BASE-HLDBK           TO NAV-BASE-HOLDBACK-A\nMOVE IDR-FDAF-ASSESS          TO NAV-FDAF-ASSESS-A\nMOVE IDR-FIN-CHG              TO NAV-FIN-COST-A\nMOVE IDR-FUEL-CHG             TO NAV-FUEL-CHG-A\nMOVE IDR-INV-TOTAL-AMT        TO NAV-INV-TOT-A\nPERFORM 2600P-GET-DLR-CNTRY\nMOVE PL-Y                     TO NAV-REBILL-F\nMOVE PL-PGM-NAME              TO NAV-UPDT-ID-C\nPERFORM 4000P-INSERT-MEXW046\nEVALUATE TRUE\nWHEN SC-DB2-SQLCODE-OK\nPERFORM 3000P-LOAD-MEXW047\nWHEN SC-DB2-SQLCODE-DUP-INSERT\nPERFORM 4100P-UPDATE-MEXW046\nPERFORM 4300P-DELETE-MEXW047\nPERFORM 3000P-LOAD-MEXW047\nEND-EVALUATE.\n/*****************************************************************\n* GET MARKET MODEL YEAR                                          *",
+          "paragraph_name": "2300P-MOVE-MEXW046",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "2400P-GET-MKT-MDL-YR",
+            "2500P-MOVE-DISCOUNT-AMTS",
+            "2600P-GET-DLR-CNTRY",
+            "4000P-INSERT-MEXW046",
+            "3000P-LOAD-MEXW047",
+            "4100P-UPDATE-MEXW046",
+            "4300P-DELETE-MEXW047"
+          ]
+        },
+        {
+          "line": "697-719",
+          "type": "Paragraph",
+          "syntax": "2400P-GET-MKT-MDL-YR.\nMOVE PL-SYSTEM-CD               TO GNT-SYSTEM-CD\nMOVE PL-TABLE-ID                TO GNT-TABLE-ID\nMOVE IDR-MDL-YR-DIGIT           TO GNT-KEY-DATA\nMOVE SL-YES                     TO GNT-SW-ACTIVE\nPERFORM 9200I-SELECT-MEXS016-GENERIC2\nIF MEXS016-FOUND\nMOVE GNT-ATTRIBUTE-DATA     TO PV-MODEL-YEAR\nMOVE PV-INT-MDL-YR          TO NAV-MKT-MDL-YR-R\nELSE\nMOVE IDR-VIN                TO ERROR-VIN\nMOVE MSG-MKT-MDL-YR-NOT-FOUND\nTO ERROR-MESSAGE-1\nMOVE IDR-MDL-YR-DIGIT       TO ERROR-MESSAGE-2\nMOVE PV-BATCH-DT            TO ERROR-BATCH-DT\nMOVE PV-BATCH-NBR           TO ERROR-BATCH-NBR\nPERFORM 7000P-WRITE-ERROR-RECORD\nMOVE PL-FOUR-ZEROS      TO NAV-MKT-MDL-YR-R\nSET SEND-EMAIL          TO TRUE\nEND-IF\n.\n/*****************************************************************\n* MOVE DISCOUNT AMOUNTS                                          *",
+          "paragraph_name": "2400P-GET-MKT-MDL-YR",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "9200I-SELECT-MEXS016-GENERIC2",
+            "7000P-WRITE-ERROR-RECORD"
+          ]
+        },
+        {
+          "line": "720-765",
+          "type": "Paragraph",
+          "syntax": "2500P-MOVE-DISCOUNT-AMTS.\nIF IDR-BONUS-DISC-DESC(1) > SPACES\nMOVE IDR-BONUS-DISC-DESC(1)TO NAV-DLR-BONUS-DISC-1-X\nMOVE IDR-BONUS-DISC-DLR(1) TO NAV-DLR-BONUS-DISC-1-A\nELSE\nMOVE SPACES                TO NAV-DLR-BONUS-DISC-1-X\nMOVE ZEROS                 TO NAV-DLR-BONUS-DISC-1-A\nEND-IF\nIF IDR-BONUS-DISC-DESC(2) > SPACES\nMOVE IDR-BONUS-DISC-DESC(2)TO NAV-DLR-BONUS-DISC-2-X\nMOVE IDR-BONUS-DISC-DLR(2) TO NAV-DLR-BONUS-DISC-2-A\nELSE\nMOVE SPACES                TO NAV-DLR-BONUS-DISC-2-X\nMOVE ZEROS                 TO NAV-DLR-BONUS-DISC-2-A\nEND-IF\nIF IDR-BONUS-DISC-DESC(3) > SPACES\nMOVE IDR-BONUS-DISC-DESC(3)TO NAV-DLR-BONUS-DISC-3-X\nMOVE IDR-BONUS-DISC-DLR(3) TO NAV-DLR-BONUS-DISC-3-A\nELSE\nMOVE SPACES                TO NAV-DLR-BONUS-DISC-3-X\nMOVE ZEROS                 TO NAV-DLR-BONUS-DISC-3-A\nEND-IF\nIF IDR-BONUS-DISC-DESC(4) > SPACES\nMOVE IDR-BONUS-DISC-DESC(4)TO NAV-DLR-BONUS-DISC-4-X\nMOVE IDR-BONUS-DISC-DLR(4) TO NAV-DLR-BONUS-DISC-4-A\nELSE\nMOVE SPACES                TO NAV-DLR-BONUS-DISC-4-X\nMOVE ZEROS                 TO NAV-DLR-BONUS-DISC-4-A\nEND-IF\nIF IDR-BONUS-DISC-DESC(5) > SPACES\nMOVE IDR-BONUS-DISC-DESC(5)TO NAV-DLR-BONUS-DISC-5-X\nMOVE IDR-BONUS-DISC-DLR(5) TO NAV-DLR-BONUS-DISC-5-A\nELSE\nMOVE SPACES                TO NAV-DLR-BONUS-DISC-5-X\nMOVE ZEROS                 TO NAV-DLR-BONUS-DISC-5-A\nEND-IF\nIF IDR-BONUS-DISC-DESC(6) > SPACES\nMOVE IDR-BONUS-DISC-DESC(6)TO NAV-DLR-BONUS-DISC-6-X\nMOVE IDR-BONUS-DISC-DLR(6) TO NAV-DLR-BONUS-DISC-6-A\nELSE\nMOVE SPACES                TO NAV-DLR-BONUS-DISC-6-X\nMOVE ZEROS                 TO NAV-DLR-BONUS-DISC-6-A\nEND-IF\n.\n/*****************************************************************\n* GET ISO COUNTRY CODE                                           *",
+          "paragraph_name": "2500P-MOVE-DISCOUNT-AMTS",
+          "is_function_call_required": false,
+          "is_file_call_required": false
+        },
+        {
+          "line": "766-788",
+          "type": "Paragraph",
+          "syntax": "2600P-GET-DLR-CNTRY.\nPERFORM\nVARYING INCNTRY-X FROM +1 BY +1\nUNTIL IDR-SLD-DC-DIV =\nINCL-DLR-CNTRY-CD(INCNTRY-X)\nOR INCNTRY-X > WS-INCNTRY-ROW-MAX\nEND-PERFORM\nIF IDR-SLD-DC-DIV = INCL-DLR-CNTRY-CD(INCNTRY-X)\nMOVE INCL-CNTRY-CD(INCNTRY-X) TO\nNAV-DLR-COUNTRY-ISO3-C\nELSE\nMOVE IDR-VIN                 TO ERROR-VIN\nMOVE MSG-COUNTRY-NOT-FOUND   TO ERROR-MESSAGE-1\nMOVE IDR-SLD-DC-DIV          TO ERROR-MESSAGE-2\nMOVE PV-BATCH-DT             TO ERROR-BATCH-DT\nMOVE PV-BATCH-NBR            TO ERROR-BATCH-NBR\nPERFORM 7000P-WRITE-ERROR-RECORD\nSET SEND-EMAIL               TO TRUE\nEND-IF\n.\n/*****************************************************************\n* LOAD MEXW047 WITH DATA FROM IDR OTPIONS, STANDARD OPTIONS AND  *\n* THE FIRST RAPID SPEC.                                          *",
+          "paragraph_name": "2600P-GET-DLR-CNTRY",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "7000P-WRITE-ERROR-RECORD"
+          ]
+        },
+        {
+          "line": "789-796",
+          "type": "Paragraph",
+          "syntax": "3000P-LOAD-MEXW047.\nMOVE +1 TO NAO-SEQ-R\nPERFORM 3100P-LOAD-IDR-OPTS\nPERFORM 3200P-LOAD-STANDARD-OPTS\nPERFORM 3300P-LOAD-RAPID-SPEC\n.\n/*****************************************************************\n* LOAD IDR OPTIONS INTO TABLE MEXW047                            *",
+          "paragraph_name": "3000P-LOAD-MEXW047",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "3100P-LOAD-IDR-OPTS",
+            "3200P-LOAD-STANDARD-OPTS",
+            "3300P-LOAD-RAPID-SPEC"
+          ]
+        },
+        {
+          "line": "797-818",
+          "type": "Paragraph",
+          "syntax": "3100P-LOAD-IDR-OPTS.\nPERFORM VARYING IDR-AG-IDX FROM +1 BY +1\nUNTIL IDR-AG-IDX > +87\nOR (IDR-OPT-CODE (IDR-AG-IDX) = SPACES\nAND  IDR-OPT-DESC(IDR-AG-IDX)  = SPACES)\nMOVE IDR-OPT-CODE (IDR-AG-IDX)      TO\nNAO-OPTION-C\nMOVE IDR-OPT-DESC (IDR-AG-IDX)      TO\nNAO-OPTION-N\nMOVE IDR-OPT-DLR-PRICE (IDR-AG-IDX) TO\nNAO-OPTION-PRICE-A\nMOVE PL-OPT                         TO\nNAO-SUB-HEADING-N\nMOVE PL-PGM-NAME                    TO\nNAO-UPDT-ID-C\nPERFORM 4200P-INSERT-MEXW047\nINITIALIZE NAO-OPTION-C\nADD +1 TO NAO-SEQ-R\nEND-PERFORM\n.\n/*****************************************************************\n* LOAD STANDARD OPTIONS INTO TABLE MEXW047                       *",
+          "paragraph_name": "3100P-LOAD-IDR-OPTS",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "4200P-INSERT-MEXW047"
+          ]
+        },
+        {
+          "line": "819-845",
+          "type": "Paragraph",
+          "syntax": "3200P-LOAD-STANDARD-OPTS.\nINITIALIZE NAO-OPTION-PRICE-A.\nPERFORM VARYING IDR-SE-IDX FROM +1 BY +1\nUNTIL IDR-SE-IDX > +64\nOR IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-WARRANTY\nEVALUATE TRUE\nWHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-EXTERIOR\nMOVE PL-EXTERIOR-2     TO NAO-SUB-HEADING-N\nWHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-INTERIOR\nMOVE PL-INTERIOR-2     TO NAO-SUB-HEADING-N\nWHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-FUNCTIONAL\nMOVE PL-FUNCTIONAL-2   TO NAO-SUB-HEADING-N\nWHEN IDR-STD-EQUIP-DESC(IDR-SE-IDX) = PL-SAFETY\nMOVE PL-SAFETY-2       TO NAO-SUB-HEADING-N\nWHEN OTHER\nIF IDR-STD-EQUIP-DESC(IDR-SE-IDX) > SPACES\nMOVE IDR-STD-EQUIP-DESC(IDR-SE-IDX)\nTO NAO-OPTION-N\nMOVE PL-PGM-NAME   TO NAO-UPDT-ID-C\nPERFORM 4200P-INSERT-MEXW047\nADD +1 TO NAO-SEQ-R\nEND-IF\nEND-EVALUATE\nEND-PERFORM\n.\n/*****************************************************************\n* LOAD FIRST OCCURENCE OF THE RAPID SPEC INTO TABLE MEXW047      *",
+          "paragraph_name": "3200P-LOAD-STANDARD-OPTS",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "4200P-INSERT-MEXW047"
+          ]
+        },
+        {
+          "line": "846-856",
+          "type": "Paragraph",
+          "syntax": "3300P-LOAD-RAPID-SPEC.\nIF IDR-RAPID-EQUIP(1) > SPACES\nMOVE IDR-RAPID-EQUIP(1)   TO NAO-OPTION-N\nMOVE IDR-RAPID-AMT(1)     TO NAO-OPTION-PRICE-A\nMOVE PL-RAPID-SPEC-HEADER TO NAO-SUB-HEADING-N\nMOVE PL-PGM-NAME          TO NAO-UPDT-ID-C\nPERFORM 4200P-INSERT-MEXW047\nEND-IF\n.\n/*****************************************************************\n* INSERT MEXW046_NAV_INV_VIN                                     *",
+          "paragraph_name": "3300P-LOAD-RAPID-SPEC",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "4200P-INSERT-MEXW047"
+          ]
+        },
+        {
+          "line": "857-967",
+          "type": "Paragraph",
+          "syntax": "4000P-INSERT-MEXW046.\nEXEC SQL\nINSERT INTO MEXW046_NAV_INV_VIN\n( NAV_VIN_C\n,NAV_DLR_VEH_X\n,NAV_INV_VL_C\n,NAV_EXT_CLR_N\n,NAV_INT_CLR_N\n,NAV_BODY_C\n,NAV_PEP_C\n,NAV_MKT_MDL_YR_R\n,NAV_SLD_TO_DLR_C\n,NAV_PA_DLR_C\n,NAV_FTC_DLR_C\n,NAV_INV_TYPE_C\n,NAV_PRICE_LVL_C\n,NAV_BASE_VEH_A\n,NAV_BASE_DLR_PRICE_A\n,NAV_BASE_UNIT_ADJ_MEMO_A\n,NAV_TOT_DLR_OPTS_A\n,NAV_OPT_ADJ_MEMO_A\n,NAV_DEST_DELIV_CHG_A\n,NAV_DLR_BONUS_DISC_1_X\n,NAV_DLR_BONUS_DISC_1_A\n,NAV_DLR_BONUS_DISC_2_X\n,NAV_DLR_BONUS_DISC_2_A\n,NAV_DLR_BONUS_DISC_3_X\n,NAV_DLR_BONUS_DISC_3_A\n,NAV_DLR_BONUS_DISC_4_X\n,NAV_DLR_BONUS_DISC_4_A\n,NAV_DLR_BONUS_DISC_5_X\n,NAV_DLR_BONUS_DISC_5_A\n,NAV_DLR_BONUS_DISC_6_X\n,NAV_DLR_BONUS_DISC_6_A\n,NAV_OPT_HOLDBACK_A\n,NAV_BASE_HOLDBACK_A\n,NAV_FDAF_ASSESS_A\n,NAV_FIN_COST_A\n,NAV_FUEL_CHG_A\n,NAV_INV_TOT_A\n,NAV_DLR_COUNTRY_ISO3_C\n,NAV_REBILL_F\n,NAV_UPDT_ID_C\n,NAV_UPDT_S\n,NAV_GMT_S\n)\nVALUES(:NAV-VIN-C\n,:NAV-DLR-VEH-X\n,:NAV-INV-VL-C\n,:NAV-EXT-CLR-N\n,:NAV-INT-CLR-N\n,:NAV-BODY-C\n,:NAV-PEP-C\n,:NAV-MKT-MDL-YR-R\n,:NAV-SLD-TO-DLR-C\n,:NAV-PA-DLR-C\n,:NAV-FTC-DLR-C\n,:NAV-INV-TYPE-C\n,:NAV-PRICE-LVL-C\n,:NAV-BASE-VEH-A\n,:NAV-BASE-DLR-PRICE-A\n,:NAV-BASE-UNIT-ADJ-MEMO-A\n,:NAV-TOT-DLR-OPTS-A\n,:NAV-OPT-ADJ-MEMO-A\n,:NAV-DEST-DELIV-CHG-A\n,:NAV-DLR-BONUS-DISC-1-X\n,:NAV-DLR-BONUS-DISC-1-A\n,:NAV-DLR-BONUS-DISC-2-X\n,:NAV-DLR-BONUS-DISC-2-A\n,:NAV-DLR-BONUS-DISC-3-X\n,:NAV-DLR-BONUS-DISC-3-A\n,:NAV-DLR-BONUS-DISC-4-X\n,:NAV-DLR-BONUS-DISC-4-A\n,:NAV-DLR-BONUS-DISC-5-X\n,:NAV-DLR-BONUS-DISC-5-A\n,:NAV-DLR-BONUS-DISC-6-X\n,:NAV-DLR-BONUS-DISC-6-A\n,:NAV-OPT-HOLDBACK-A\n,:NAV-BASE-HOLDBACK-A\n,:NAV-FDAF-ASSESS-A\n,:NAV-FIN-COST-A\n,:NAV-FUEL-CHG-A\n,:NAV-INV-TOT-A\n,:NAV-DLR-COUNTRY-ISO3-C\n,:NAV-REBILL-F\n,:NAV-UPDT-ID-C\n, CURRENT TIMESTAMP\n, CURRENT TIMESTAMP - CURRENT TIMEZONE\n)\nEND-EXEC\nMOVE SQLCODE                           TO SC-DB2-SQLCODE\nEVALUATE TRUE\nWHEN SC-DB2-SQLCODE-OK\nADD +1                          TO PV-INS-UPD-REC-CNT\nWHEN SC-DB2-SQLCODE-DUP-INSERT\nCONTINUE\nWHEN OTHER\nMOVE SPACES                     TO AUDIT-RECORD\nSTRING \"VIN = \" , NAV-VIN-C\nDELIMITED BY SIZE             INTO AUDIT-DATA\nWRITE AUDIT-RECORD\nMOVE SQLCODE                    TO DB2-ABEND-SQLCODE\nMOVE \"INSERT\"                   TO DB2-ABEND-FUNCTION\nMOVE \" MEXW046_NAV_INV_VIN \"    TO DB2-ABEND-TABLE\nMOVE DB2-ABEND-MSG              TO ABEND-MSG\nMOVE \"4000P-INSERT-MEXW046\"     TO ABEND-PARAGRAPH\nPERFORM 9999I-ABEND\nEND-EVALUATE\n.\n/*****************************************************************\n* UPDATE MEXW046_NAV_INV_VIN                                     *",
+          "paragraph_name": "4000P-INSERT-MEXW046",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "9999I-ABEND"
+          ]
+        },
+        {
+          "line": "968-1033",
+          "type": "Paragraph",
+          "syntax": "4100P-UPDATE-MEXW046.\nEXEC SQL\nUPDATE MEXW046_NAV_INV_VIN\nSET NAV_DLR_VEH_X            = :NAV-DLR-VEH-X\n,NAV_INV_VL_C             = :NAV-INV-VL-C\n,NAV_EXT_CLR_N            = :NAV-EXT-CLR-N\n,NAV_INT_CLR_N            = :NAV-INT-CLR-N\n,NAV_BODY_C               = :NAV-BODY-C\n,NAV_PEP_C                = :NAV-PEP-C\n,NAV_MKT_MDL_YR_R         = :NAV-MKT-MDL-YR-R\n,NAV_SLD_TO_DLR_C         = :NAV-SLD-TO-DLR-C\n,NAV_PA_DLR_C             = :NAV-PA-DLR-C\n,NAV_FTC_DLR_C            = :NAV-FTC-DLR-C\n,NAV_INV_TYPE_C           = :NAV-INV-TYPE-C\n,NAV_PRICE_LVL_C          = :NAV-PRICE-LVL-C\n,NAV_BASE_VEH_A           = :NAV-BASE-VEH-A\n,NAV_BASE_DLR_PRICE_A     = :NAV-BASE-DLR-PRICE-A\n,NAV_BASE_UNIT_ADJ_MEMO_A = :NAV-BASE-UNIT-ADJ-MEMO-A\n,NAV_TOT_DLR_OPTS_A       = :NAV-TOT-DLR-OPTS-A\n,NAV_OPT_ADJ_MEMO_A       = :NAV-OPT-ADJ-MEMO-A\n,NAV_DEST_DELIV_CHG_A     = :NAV-DEST-DELIV-CHG-A\n,NAV_DLR_BONUS_DISC_1_X   = :NAV-DLR-BONUS-DISC-1-X\n,NAV_DLR_BONUS_DISC_1_A   = :NAV-DLR-BONUS-DISC-1-A\n,NAV_DLR_BONUS_DISC_2_X   = :NAV-DLR-BONUS-DISC-2-X\n,NAV_DLR_BONUS_DISC_2_A   = :NAV-DLR-BONUS-DISC-2-A\n,NAV_DLR_BONUS_DISC_3_X   = :NAV-DLR-BONUS-DISC-3-X\n,NAV_DLR_BONUS_DISC_3_A   = :NAV-DLR-BONUS-DISC-3-A\n,NAV_DLR_BONUS_DISC_4_X   = :NAV-DLR-BONUS-DISC-4-X\n,NAV_DLR_BONUS_DISC_4_A   = :NAV-DLR-BONUS-DISC-4-A\n,NAV_DLR_BONUS_DISC_5_X   = :NAV-DLR-BONUS-DISC-5-X\n,NAV_DLR_BONUS_DISC_5_A   = :NAV-DLR-BONUS-DISC-5-A\n,NAV_DLR_BONUS_DISC_6_X   = :NAV-DLR-BONUS-DISC-6-X\n,NAV_DLR_BONUS_DISC_6_A   = :NAV-DLR-BONUS-DISC-6-A\n,NAV_OPT_HOLDBACK_A       = :NAV-OPT-HOLDBACK-A\n,NAV_BASE_HOLDBACK_A      = :NAV-BASE-HOLDBACK-A\n,NAV_FDAF_ASSESS_A        = :NAV-FDAF-ASSESS-A\n,NAV_FIN_COST_A           = :NAV-FIN-COST-A\n,NAV_FUEL_CHG_A           = :NAV-FUEL-CHG-A\n,NAV_INV_TOT_A            = :NAV-INV-TOT-A\n,NAV_DLR_COUNTRY_ISO3_C   = :NAV-DLR-COUNTRY-ISO3-C\n,NAV_REBILL_F             = :NAV-REBILL-F\n,NAV_UPDT_ID_C            = :NAV-UPDT-ID-C\n,NAV_UPDT_S               =  CURRENT TIMESTAMP\n,NAV_GMT_S                =  CURRENT TIMESTAMP -\nCURRENT TIMEZONE\nWHERE NAV_VIN_C                = :NAV-VIN-C\nEND-EXEC\nMOVE SQLCODE TO SC-DB2-SQLCODE\nEVALUATE TRUE\nWHEN SC-DB2-SQLCODE-OK\nADD +1                        TO PV-INS-UPD-REC-CNT\nWHEN NOT SC-DB2-SQLCODE-OK\nMOVE SPACES                   TO AUDIT-RECORD\nSTRING \"VIN = \" , NAV-VIN-C\nDELIMITED BY SIZE           INTO AUDIT-DATA\nWRITE AUDIT-RECORD\nMOVE SQLCODE                  TO DB2-ABEND-SQLCODE\nMOVE \"UPDATE\"                 TO DB2-ABEND-FUNCTION\nMOVE \"MEXW046_NAO_REBILL_VIN\" TO DB2-ABEND-TABLE\nMOVE DB2-ABEND-MSG            TO ABEND-MSG\nMOVE \"4100P-UPDATE-MEXW046\"   TO ABEND-PARAGRAPH\nPERFORM 9999I-ABEND\nEND-EVALUATE\n.\n/*****************************************************************\n* INSERT MEXW047                                                 *",
+          "paragraph_name": "4100P-UPDATE-MEXW046",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "9999I-ABEND"
+          ]
+        },
+        {
+          "line": "1034-1077",
+          "type": "Paragraph",
+          "syntax": "4200P-INSERT-MEXW047.\nEXEC SQL\nINSERT INTO MEXW047_NAO_INV_OPT\n( NAV_VIN_C\n,NAO_SEQ_R\n,NAO_OPTION_C\n,NAO_OPTION_N\n,NAO_OPTION_PRICE_A\n,NAO_SUB_HEADING_N\n,NAO_UPDT_ID_C\n,NAO_UPDT_S\n,NAO_GMT_S\n)\nVALUES(:NAO-VIN-C\n,:NAO-SEQ-R\n,:NAO-OPTION-C\n,:NAO-OPTION-N\n,:NAO-OPTION-PRICE-A\n,:NAO-SUB-HEADING-N\n,:NAO-UPDT-ID-C\n, CURRENT TIMESTAMP\n, CURRENT TIMESTAMP - CURRENT TIMEZONE\n)\nEND-EXEC\nMOVE SQLCODE                          TO SC-DB2-SQLCODE\nEVALUATE TRUE\nWHEN SC-DB2-SQLCODE-OK\nCONTINUE\nWHEN OTHER\nMOVE SPACES                   TO AUDIT-RECORD\nSTRING \"VIN = \" , NAV-VIN-C \", \" ,\n\"OPT CD = \" , NAO-OPTION-C\nDELIMITED BY SIZE            INTO AUDIT-DATA\nWRITE AUDIT-RECORD\nMOVE SQLCODE                   TO DB2-ABEND-SQLCODE\nMOVE \"INSERT\"                  TO DB2-ABEND-FUNCTION\nMOVE \" MEXW047_NAO_INV_OPT \"   TO DB2-ABEND-TABLE\nMOVE DB2-ABEND-MSG             TO ABEND-MSG\nMOVE \"4200P-INSERT-MEXW047\"    TO ABEND-PARAGRAPH\nPERFORM 9999I-ABEND\nEND-EVALUATE\n.\n/*****************************************************************\n* DELETE MEXW047                                                 *",
+          "paragraph_name": "4200P-INSERT-MEXW047",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "9999I-ABEND"
+          ]
+        },
+        {
+          "line": "1078-1102",
+          "type": "Paragraph",
+          "syntax": "4300P-DELETE-MEXW047.\nEXEC SQL\nDELETE FROM MEXW047_NAO_INV_OPT\nWHERE NAV_VIN_C = :NAO-VIN-C\nEND-EXEC\nMOVE SQLCODE TO SC-DB2-SQLCODE\nEVALUATE TRUE\nWHEN SC-DB2-SQLCODE-OK\nWHEN SC-DB2-SQLCODE-NOT-FOUND\nCONTINUE\nWHEN NOT SC-DB2-SQLCODE-OK\nMOVE SPACES                   TO AUDIT-RECORD\nSTRING \"VIN = \" , NAO-VIN-C\nDELIMITED BY SIZE           INTO AUDIT-DATA\nWRITE AUDIT-RECORD\nMOVE SQLCODE                  TO DB2-ABEND-SQLCODE\nMOVE \"DELETE\"                 TO DB2-ABEND-FUNCTION\nMOVE \"MEXW047_NAO_INV_OPT\"    TO DB2-ABEND-TABLE\nMOVE DB2-ABEND-MSG            TO ABEND-MSG\nMOVE \"4300P-DELETE-MEXW047\"   TO ABEND-PARAGRAPH\nPERFORM 9999I-ABEND\nEND-EVALUATE\n.\n/*****************************************************************\n* GET NEXT GSAM INPUT-RECORD.                                    *",
+          "paragraph_name": "4300P-DELETE-MEXW047",
+          "is_function_call_required": true,
+          "is_file_call_required": false,
+          "function_dependencies": [
+            "9999I-ABEND"
+          ]
+        },
+        {
+          "line": "1103-1124",
+          "type": "Paragraph",
+          "syntax": "5000P-GET-NEXT-INPUT-RECORD.\nCALL \"CBLTDLI\" USING SL-FUNC-GN\nINVDATA-IN-PCB\nINVOICE-DATA-RECORD\nMOVE INVDATA-IN-PCB-STATUS          TO SC-IMS-STAT\nEVALUATE TRUE\nWHEN SC-IMS-STAT-OK\nMOVE INVOICE-DATA-RECORD      TO INVDATA-RECORD\nADD +1                        TO PV-COUNT-BATCH\nWHEN SC-IMS-STAT-END-OF-DB\nSET INPUT-EOF                 TO TRUE\nWHEN OTHER\nMOVE INVDATA-IN-PCB-STATUS    TO IMS-ABEND-STATUS\nMOVE SL-FUNC-GN               TO IMS-ABEND-FUNCTION\nMOVE INVDATA-IN-PCB-NAME      TO IMS-ABEND-PCB-NAME\nMOVE IMS-ABEND-MSG            TO ABEND-MSG\nMOVE \"5000P\"                  TO ABEND-PARAGRAPH\nPERFORM 9999I-ABEND\nEND-EVALUATE\n.\n/*****************************************************************\n* INSERT ERROR RECORD TO GSAM                                    *",
+          "paragraph_name": "5000P-GET-NEXT-INPUT-RECORD",
+          "is_function_call_required": true,
+          "is_file_call_required": true,
+          "function_dependencies": [
+            "9999I-ABEND"
+          ],
+          "file_dependencies": [
+            {
+              "line": "1104",
+              "file_name": "CBLTDLI"
+            }
+          ]
+        },
+        {
+          "line": "1125-1142",
+          "type": "Paragraph",
+          "syntax": "7000P-WRITE-ERROR-RECORD.\nCALL \"CBLTDLI\" USING SL-FUNC-ISRT\nERROR-PCB\nERROR-RECORD\nMOVE ERROR-PCB-STATUS      TO SC-IMS-STAT\nIF  SC-IMS-STAT-OK\nMOVE SPACES            TO ERROR-RECORD\nELSE\nMOVE ERROR-PCB-STATUS  TO IMS-ABEND-STATUS\nMOVE SL-FUNC-ISRT      TO IMS-ABEND-FUNCTION\nMOVE ERROR-PCB-NAME    TO IMS-ABEND-PCB-NAME\nMOVE IMS-ABEND-MSG     TO ABEND-MSG\nMOVE \"7000P\"           TO ABEND-PARAGRAPH\nPERFORM 9999I-ABEND\nEND-IF\n.\n/*****************************************************************\n* WRITE AUDIT DETAIL LINES                                       *",
+          "paragraph_name": "7000P-WRITE-ERROR-RECORD",
+          "is_function_call_required": true,
+          "is_file_call_required": true,
+          "function_dependencies": [
+            "9999I-ABEND"
+          ],
+          "file_dependencies": [
+            {
+              "line": "1126",
+              "file_name": "CBLTDLI"
+            }
+          ]
+        },
+        {
+          "line": "1143-1151",
+          "type": "Paragraph",
+          "syntax": "8000P-WRITE-AUDIT-DETAIL.\nMOVE SPACES                         TO AUDIT-RECORD\nWRITE AUDIT-RECORD\nMOVE \"OUTPUT BATCH NUMBER        :\" TO AUDIT-LABEL\nMOVE PV-EXWWB915-CURR-BATCH-NO      TO AUDIT-DATA\nWRITE AUDIT-RECORD\n.\nCOPY CPESEBCR.\n*- BMPSHELL CALLED ROUTINES",
+          "paragraph_name": "8000P-WRITE-AUDIT-DETAIL",
+          "is_function_call_required": false,
+          "is_file_call_required": true,
+          "file_dependencies": [
+            {
+              "line": "1150",
+              "file_name": "CPESEBCR"
+            }
+          ]
+        }
+      ]
+    },
+    "file_graph": {
+      "program_name": "EXWWB915",
+      "dependent_files": [
+        {
+          "program_name": "CPESDB2",
+          "dependent_files": []
+        },
+        {
+          "program_name": "CPESD016",
+          "dependent_files": []
+        },
+        {
+          "program_name": "CPESIMSB",
+          "dependent_files": []
+        },
+        {
+          "program_name": "CBLTDLI",
+          "dependent_files": []
+        },
+        {
+          "program_name": "CPEWD047",
+          "dependent_files": []
+        },
+        {
+          "program_name": "CPESGNTB",
+          "dependent_files": []
+        },
+        {
+          "program_name": "CPESEBIC",
+          "dependent_files": []
+        },
+        {
+          "program_name": "CPESEBCR",
+          "dependent_files": [
+            {
+              "program_name": "COREDUMP",
+              "dependent_files": []
+            },
+            {
+              "program_name": "CBLTDLI",
+              "dependent_files": []
+            }
+          ]
+        },
+        {
+          "program_name": "CPEWGNTB",
+          "dependent_files": []
+        },
+        {
+          "program_name": "CPEWIIDR",
+          "dependent_files": []
+        },
+        {
+          "program_name": "CPEWD046",
+          "dependent_files": []
+        },
+        {
+          "program_name": "CPESEBWS",
+          "dependent_files": []
+        }
+      ]
+    },
+    "function_graph": {
+      "functional_dependencies": [
+        {
+          "paragraph_name": "0000P-MAINLINE",
+          "function_graph": [
+            {
+              "paragraph_name": "5000P-GET-NEXT-INPUT-RECORD"
+            },
+            {
+              "paragraph_name": "9210I-UPDATE-MEXS016-GENERIC2"
+            },
+            {
+              "paragraph_name": "2300P-MOVE-MEXW046"
+            },
+            {
+              "paragraph_name": "1100P-PROCESS-HEADER-RECORD"
+            },
+            {
+              "paragraph_name": "0410P-SELECT-SYSPARM-BATCHCTL"
+            },
+            {
+              "paragraph_name": "9110I-WRITE-AUDIT-CHECKPOINT"
+            },
+            {
+              "paragraph_name": "0200I-CONCLUSION"
+            },
+            {
+              "paragraph_name": "0700P-CONCLUDE-OTHER"
+            },
+            {
+              "paragraph_name": "1130P-EDIT-BATCH-NUMBER"
+            },
+            {
+              "paragraph_name": "9400I-INCREMENT-CHKP-COUNT"
+            },
+            {
+              "paragraph_name": "1200P-PROCESS-TRAILER-RECORD"
+            },
+            {
+              "paragraph_name": "2200P-SEARCH-VL-TABLE"
+            },
+            {
+              "paragraph_name": "9000I-GET-CURRENT-DATE-TIME"
+            },
+            {
+              "paragraph_name": "1120P-EDIT-PROD-SYSTEM"
+            },
+            {
+              "paragraph_name": "9100I-WRITE-AUDIT-HEADER"
+            },
+            {
+              "paragraph_name": "8000P-WRITE-AUDIT-DETAIL"
+            },
+            {
+              "paragraph_name": "0110I-GET-CHECKPOINT-PARM"
+            },
+            {
+              "paragraph_name": "9500I-IMS-CHECKPOINT"
+            },
+            {
+              "paragraph_name": "0400P-INITIALIZE-OTHER"
+            },
+            {
+              "paragraph_name": "1000P-PROCESS-TRANSACTION"
+            },
+            {
+              "paragraph_name": "0550P-LOAD-INCNTRY"
+            },
+            {
+              "paragraph_name": "2100P-EDIT-VIN"
+            },
+            {
+              "paragraph_name": "0300P-INITIALIZE-SAVE-AREA"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2"
+            },
+            {
+              "paragraph_name": "0100I-INITIALIZATION"
+            },
+            {
+              "paragraph_name": "0500P-LOAD-INVEHLN"
+            },
+            {
+              "paragraph_name": "2000P-PROCESS-OTHER-TRANS"
+            },
+            {
+              "paragraph_name": "9600I-IMS-RESTART"
+            },
+            {
+              "paragraph_name": "7000P-WRITE-ERROR-RECORD"
+            },
+            {
+              "paragraph_name": "9120I-WRITE-AUDIT-TRAILER"
+            },
+            {
+              "paragraph_name": "0350P-INITIALIZE-REPORT-TITLES"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "0300P-INITIALIZE-SAVE-AREA",
+          "function_graph": []
+        },
+        {
+          "paragraph_name": "0350P-INITIALIZE-REPORT-TITLES",
+          "function_graph": []
+        },
+        {
+          "paragraph_name": "0400P-INITIALIZE-OTHER",
+          "function_graph": [
+            {
+              "paragraph_name": "5000P-GET-NEXT-INPUT-RECORD"
+            },
+            {
+              "paragraph_name": "0410P-SELECT-SYSPARM-BATCHCTL"
+            },
+            {
+              "paragraph_name": "7000P-WRITE-ERROR-RECORD"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "0410P-SELECT-SYSPARM-BATCHCTL",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "0500P-LOAD-INVEHLN",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "0550P-LOAD-INCNTRY",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "0700P-CONCLUDE-OTHER",
+          "function_graph": []
+        },
+        {
+          "paragraph_name": "1000P-PROCESS-TRANSACTION",
+          "function_graph": [
+            {
+              "paragraph_name": "5000P-GET-NEXT-INPUT-RECORD"
+            },
+            {
+              "paragraph_name": "9210I-UPDATE-MEXS016-GENERIC2"
+            },
+            {
+              "paragraph_name": "2300P-MOVE-MEXW046"
+            },
+            {
+              "paragraph_name": "1100P-PROCESS-HEADER-RECORD"
+            },
+            {
+              "paragraph_name": "4300P-DELETE-MEXW047"
+            },
+            {
+              "paragraph_name": "2600P-GET-DLR-CNTRY"
+            },
+            {
+              "paragraph_name": "1130P-EDIT-BATCH-NUMBER"
+            },
+            {
+              "paragraph_name": "9400I-INCREMENT-CHKP-COUNT"
+            },
+            {
+              "paragraph_name": "1200P-PROCESS-TRAILER-RECORD"
+            },
+            {
+              "paragraph_name": "1120P-EDIT-PROD-SYSTEM"
+            },
+            {
+              "paragraph_name": "8000P-WRITE-AUDIT-DETAIL"
+            },
+            {
+              "paragraph_name": "3000P-LOAD-MEXW047"
+            },
+            {
+              "paragraph_name": "9500I-IMS-CHECKPOINT"
+            },
+            {
+              "paragraph_name": "4000P-INSERT-MEXW046"
+            },
+            {
+              "paragraph_name": "2100P-EDIT-VIN"
+            },
+            {
+              "paragraph_name": "4100P-UPDATE-MEXW046"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2"
+            },
+            {
+              "paragraph_name": "2000P-PROCESS-OTHER-TRANS"
+            },
+            {
+              "paragraph_name": "2400P-GET-MKT-MDL-YR"
+            },
+            {
+              "paragraph_name": "2150P-VALIDATE-17-CHAR-VIN"
+            },
+            {
+              "paragraph_name": "2500P-MOVE-DISCOUNT-AMTS"
+            },
+            {
+              "paragraph_name": "7000P-WRITE-ERROR-RECORD"
+            },
+            {
+              "paragraph_name": "2200P-SEARCH-VL-TABLE"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "1100P-PROCESS-HEADER-RECORD",
+          "function_graph": [
+            {
+              "paragraph_name": "1130P-EDIT-BATCH-NUMBER"
+            },
+            {
+              "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2"
+            },
+            {
+              "paragraph_name": "1120P-EDIT-PROD-SYSTEM"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "8000P-WRITE-AUDIT-DETAIL"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "1120P-EDIT-PROD-SYSTEM",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "8000P-WRITE-AUDIT-DETAIL"
+            },
+            {
+              "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "1130P-EDIT-BATCH-NUMBER",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "8000P-WRITE-AUDIT-DETAIL"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "1200P-PROCESS-TRAILER-RECORD",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "8000P-WRITE-AUDIT-DETAIL"
+            },
+            {
+              "paragraph_name": "9210I-UPDATE-MEXS016-GENERIC2"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "2000P-PROCESS-OTHER-TRANS",
+          "function_graph": [
+            {
+              "paragraph_name": "3000P-LOAD-MEXW047"
+            },
+            {
+              "paragraph_name": "3300P-LOAD-RAPID-SPEC"
+            },
+            {
+              "paragraph_name": "2600P-GET-DLR-CNTRY"
+            },
+            {
+              "paragraph_name": "2300P-MOVE-MEXW046"
+            },
+            {
+              "paragraph_name": "2400P-GET-MKT-MDL-YR"
+            },
+            {
+              "paragraph_name": "4000P-INSERT-MEXW046"
+            },
+            {
+              "paragraph_name": "2150P-VALIDATE-17-CHAR-VIN"
+            },
+            {
+              "paragraph_name": "2100P-EDIT-VIN"
+            },
+            {
+              "paragraph_name": "3200P-LOAD-STANDARD-OPTS"
+            },
+            {
+              "paragraph_name": "4100P-UPDATE-MEXW046"
+            },
+            {
+              "paragraph_name": "4300P-DELETE-MEXW047"
+            },
+            {
+              "paragraph_name": "2500P-MOVE-DISCOUNT-AMTS"
+            },
+            {
+              "paragraph_name": "7000P-WRITE-ERROR-RECORD"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "3100P-LOAD-IDR-OPTS"
+            },
+            {
+              "paragraph_name": "2200P-SEARCH-VL-TABLE"
+            },
+            {
+              "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "2100P-EDIT-VIN",
+          "function_graph": [
+            {
+              "paragraph_name": "7000P-WRITE-ERROR-RECORD"
+            },
+            {
+              "paragraph_name": "2150P-VALIDATE-17-CHAR-VIN"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "2150P-VALIDATE-17-CHAR-VIN",
+          "function_graph": [
+            {
+              "paragraph_name": "7000P-WRITE-ERROR-RECORD"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "2200P-SEARCH-VL-TABLE",
+          "function_graph": [
+            {
+              "paragraph_name": "7000P-WRITE-ERROR-RECORD"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "2300P-MOVE-MEXW046",
+          "function_graph": [
+            {
+              "paragraph_name": "3000P-LOAD-MEXW047"
+            },
+            {
+              "paragraph_name": "3300P-LOAD-RAPID-SPEC"
+            },
+            {
+              "paragraph_name": "2600P-GET-DLR-CNTRY"
+            },
+            {
+              "paragraph_name": "2400P-GET-MKT-MDL-YR"
+            },
+            {
+              "paragraph_name": "4000P-INSERT-MEXW046"
+            },
+            {
+              "paragraph_name": "4200P-INSERT-MEXW047"
+            },
+            {
+              "paragraph_name": "3200P-LOAD-STANDARD-OPTS"
+            },
+            {
+              "paragraph_name": "4100P-UPDATE-MEXW046"
+            },
+            {
+              "paragraph_name": "4300P-DELETE-MEXW047"
+            },
+            {
+              "paragraph_name": "2500P-MOVE-DISCOUNT-AMTS"
+            },
+            {
+              "paragraph_name": "7000P-WRITE-ERROR-RECORD"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "3100P-LOAD-IDR-OPTS"
+            },
+            {
+              "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "2400P-GET-MKT-MDL-YR",
+          "function_graph": [
+            {
+              "paragraph_name": "7000P-WRITE-ERROR-RECORD"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "2500P-MOVE-DISCOUNT-AMTS",
+          "function_graph": []
+        },
+        {
+          "paragraph_name": "2600P-GET-DLR-CNTRY",
+          "function_graph": [
+            {
+              "paragraph_name": "7000P-WRITE-ERROR-RECORD"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "3000P-LOAD-MEXW047",
+          "function_graph": [
+            {
+              "paragraph_name": "3300P-LOAD-RAPID-SPEC"
+            },
+            {
+              "paragraph_name": "4200P-INSERT-MEXW047"
+            },
+            {
+              "paragraph_name": "3100P-LOAD-IDR-OPTS"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "3200P-LOAD-STANDARD-OPTS"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "3100P-LOAD-IDR-OPTS",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "4200P-INSERT-MEXW047"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "3200P-LOAD-STANDARD-OPTS",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "4200P-INSERT-MEXW047"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "3300P-LOAD-RAPID-SPEC",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "4200P-INSERT-MEXW047"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "4000P-INSERT-MEXW046",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "4100P-UPDATE-MEXW046",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "4200P-INSERT-MEXW047",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "4300P-DELETE-MEXW047",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "5000P-GET-NEXT-INPUT-RECORD",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "7000P-WRITE-ERROR-RECORD",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "8000P-WRITE-AUDIT-DETAIL",
+          "function_graph": []
+        },
+        {
+          "paragraph_name": "0100I-INITIALIZATION",
+          "function_graph": [
+            {
+              "paragraph_name": "5000P-GET-NEXT-INPUT-RECORD"
+            },
+            {
+              "paragraph_name": "9210I-UPDATE-MEXS016-GENERIC2"
+            },
+            {
+              "paragraph_name": "9000I-GET-CURRENT-DATE-TIME"
+            },
+            {
+              "paragraph_name": "0110I-GET-CHECKPOINT-PARM"
+            },
+            {
+              "paragraph_name": "9500I-IMS-CHECKPOINT"
+            },
+            {
+              "paragraph_name": "0410P-SELECT-SYSPARM-BATCHCTL"
+            },
+            {
+              "paragraph_name": "9600I-IMS-RESTART"
+            },
+            {
+              "paragraph_name": "9110I-WRITE-AUDIT-CHECKPOINT"
+            },
+            {
+              "paragraph_name": "0400P-INITIALIZE-OTHER"
+            },
+            {
+              "paragraph_name": "0300P-INITIALIZE-SAVE-AREA"
+            },
+            {
+              "paragraph_name": "9100I-WRITE-AUDIT-HEADER"
+            },
+            {
+              "paragraph_name": "7000P-WRITE-ERROR-RECORD"
+            },
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "0350P-INITIALIZE-REPORT-TITLES"
+            },
+            {
+              "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "0200I-CONCLUSION",
+          "function_graph": [
+            {
+              "paragraph_name": "0700P-CONCLUDE-OTHER"
+            },
+            {
+              "paragraph_name": "9000I-GET-CURRENT-DATE-TIME"
+            },
+            {
+              "paragraph_name": "9120I-WRITE-AUDIT-TRAILER"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "9210I-UPDATE-MEXS016-GENERIC2",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "9000I-GET-CURRENT-DATE-TIME",
+          "function_graph": []
+        },
+        {
+          "paragraph_name": "0110I-GET-CHECKPOINT-PARM",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2"
+            },
+            {
+              "paragraph_name": "9210I-UPDATE-MEXS016-GENERIC2"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "9500I-IMS-CHECKPOINT",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "9600I-IMS-RESTART",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "9110I-WRITE-AUDIT-CHECKPOINT",
+          "function_graph": []
+        },
+        {
+          "paragraph_name": "9100I-WRITE-AUDIT-HEADER",
+          "function_graph": []
+        },
+        {
+          "paragraph_name": "9999I-ABEND",
+          "function_graph": []
+        },
+        {
+          "paragraph_name": "9200I-SELECT-MEXS016-GENERIC2",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            }
+          ]
+        },
+        {
+          "paragraph_name": "9120I-WRITE-AUDIT-TRAILER",
+          "function_graph": []
+        },
+        {
+          "paragraph_name": "9400I-INCREMENT-CHKP-COUNT",
+          "function_graph": [
+            {
+              "paragraph_name": "9999I-ABEND"
+            },
+            {
+              "paragraph_name": "9500I-IMS-CHECKPOINT"
+            }
+          ]
+        }
+      ]
+    },
+    "gcs_locations": {
+      "formatted_input": null,
+      "structured_code": null,
+      "file_graph": null,
+      "function_graph": null
+    }
+  }
+]

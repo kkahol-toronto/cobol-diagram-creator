@@ -1,0 +1,34 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+cfg_cobol_env/
+.env/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*.bak
+
+# Jupyter/IPython
+.ipynb_checkpoints/
+
+# Mermaid/diagram outputs
+*.svg
+*.png
+*.mmd
+*.tmp.md
+*.pdf
+*.docx
+
+# Node modules (if any)
+node_modules/
+
+# Log files
+*.log 
