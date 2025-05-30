@@ -19,13 +19,7 @@ Thumbs.db
 # Jupyter/IPython
 .ipynb_checkpoints/
 
-# Mermaid/diagram outputs
-*.svg
-*.png
-*.mmd
-*.tmp.md
-*.pdf
-*.docx
+
 
 # Node modules (if any)
 node_modules/

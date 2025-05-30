@@ -1,0 +1,58 @@
+flowchart TD
+    %% Main Program Flow
+    Start([Program Start]) --> Init[0000P-MAINLINE]
+    Init --> InitPhase[0100I-INITIALIZATION]
+
+    %% Initialization Phase
+
+    %% Main Processing Loop
+    InitPhase --> MainLoop[1000P-PROCESS]
+    MainLoop --> ProcessProducer{Process Producer}
+    ProcessProducer --> OpenMEXW001[Open MEXW001_CSR]
+    OpenMEXW001 --> FetchMEXW001[Fetch MEXW001 Records]
+    FetchMEXW001 --> ProcessVehicle[2000C-PROCESS-GEVIS-VEHICLE]
+    ProcessVehicle --> MoreMEXW001{More Records?}
+    MoreMEXW001 -->|Yes| FetchMEXW001
+    MoreMEXW001 -->|No| CloseMEXW001[Close MEXW001_CSR]
+
+    %% Vehicle Processing Details
+    ProcessVehicle --> GetWERS[Get WERS Data]
+    GetWERS --> GetDealerData[Get Dealer Data]
+    GetDealerData --> GetRetailData[Get Retail Data]
+    GetRetailData --> GetWholesaleData[Get Wholesale Data]
+    GetWholesaleData --> GetWERSDetails[Get WERS Details]
+    GetWERSDetails --> GetStatusDates[Get Status Dates]
+    GetStatusDates --> WriteRecord[Write VINCENT Record]
+    WriteRecord --> Checkpoint{Checkpoint Needed?}
+    Checkpoint -->|Yes| DoCheckpoint[Perform Checkpoint]
+    Checkpoint -->|No| NextVehicle[Next Vehicle]
+
+    %% Conclusion Phase
+    MainLoop --> Conclusion[0200I-CONCLUSION]
+    Conclusion --> UpdateTimestamp[Update Run Timestamp]
+    UpdateTimestamp --> UpdateBatch[Update Batch Number]
+    UpdateBatch --> WriteTrailers[Write Trailers]
+    WriteTrailers --> WriteAudit[Write Audit Statistics]
+    WriteAudit --> SetReturnCode[Set Return Code]
+    SetReturnCode --> End([Program End])
+
+    %% Error Handling
+    InitPhase -->|Error| Abend[9999I-ABEND]
+    MainLoop -->|Error| Abend
+    ProcessVehicle -->|Error| Abend
+    Conclusion -->|Error| Abend
+    Abend --> WriteAbendMsg[Write Abend Message]
+    WriteAbendMsg --> Rollback[Perform Rollback]
+    Rollback --> CoreDump[Call COREDUMP]
+    CoreDump --> End
+
+    %% Styling
+    classDef process fill:#f9f,stroke:#333,stroke-width:2px
+    classDef decision fill:#bbf,stroke:#333,stroke-width:2px
+    classDef error fill:#fbb,stroke:#333,stroke-width:2px
+    classDef start fill:#bfb,stroke:#333,stroke-width:2px
+
+    class Start,End start
+    class ProcessProducer,MoreMEXW001,MoreSaleChk,MoreProducers,Checkpoint decision
+    class Abend,WriteAbendMsg,Rollback,CoreDump error
+    class Init,InitPhase,MainLoop,ProcessVehicle,Conclusion process
